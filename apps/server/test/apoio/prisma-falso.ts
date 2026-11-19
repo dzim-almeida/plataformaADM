@@ -30,6 +30,7 @@ export const tabelas = {
   faturaExcedenteFiscal: [] as Linha[],
   avisoFiscal:         [] as Linha[],
   municipioNfse:       [] as Linha[],
+  backup:              [] as Linha[],
 }
 
 export function reiniciarBanco() {
@@ -64,6 +65,7 @@ function casa(linha: Linha, where: Linha = {}): boolean {
         if (op === 'not') return v !== alvo
         if (op === 'gte') return v >= alvo
         if (op === 'gt')  return v > alvo
+        if (op === 'lt')  return v < alvo
         if (op === 'contains') return cond.mode === 'insensitive'
           ? String(v ?? '').toLowerCase().includes(String(alvo).toLowerCase())
           : String(v ?? '').includes(alvo)
@@ -118,6 +120,47 @@ export const prismaFalso = {
     update: async ({ where, data }: Linha) => {
       const linha = tabelas.licenca.find(l => l.id === where.id)
       if (!linha) throw new Error(`licenca ${where.id} não existe`)
+      aplicarDados(linha, data)
+      return copia(linha)
+    },
+    /**
+     * Gravação COM CONDIÇÃO (LIC-05, D-33): só altera as linhas que casam com o
+     * `where` no momento da gravação. Como no Postgres, duas chamadas
+     * "simultâneas" com `hwidServidor: null` resultam em uma gravação só: esta
+     * função não tem `await` no meio, então a segunda já vê o campo preenchido.
+     */
+    updateMany: async ({ where, data }: Linha) => {
+      const linhas = tabelas.licenca.filter(l => casa(l, where))
+      linhas.forEach(l => aplicarDados(l, data))
+      return { count: linhas.length }
+    },
+  },
+
+  /** Backups em nuvem (LIC-05): só as operações que o erp-backup.service usa. */
+  backup: {
+    create: async ({ data }: Linha) => {
+      const linha = {
+        id: novoId('backup'), status: 'EMITIDO', emitidoEm: new Date(),
+        confirmadoEm: null, tamanhoRealBytes: null, erroMensagem: null, ...data,
+      }
+      tabelas.backup.push(linha)
+      return copia(linha)
+    },
+    findUnique: async ({ where }: Linha) =>
+      copia(tabelas.backup.find(b => b.id === where.id)),
+    findFirst: async ({ where, orderBy }: Linha) =>
+      copia(ordenar(tabelas.backup.filter(b => casa(b, where)), orderBy)[0]),
+    findMany: async ({ where, orderBy, take }: Linha) =>
+      ordenar(tabelas.backup.filter(b => casa(b, where)), orderBy).slice(0, take ?? Infinity).map(copia),
+    count: async ({ where }: Linha) =>
+      tabelas.backup.filter(b => casa(b, where)).length,
+    aggregate: async ({ where }: Linha) => {
+      const sequencias = tabelas.backup.filter(b => casa(b, where)).map(b => b.sequencia)
+      return { _max: { sequencia: sequencias.length ? Math.max(...sequencias) : null } }
+    },
+    update: async ({ where, data }: Linha) => {
+      const linha = tabelas.backup.find(b => b.id === where.id)
+      if (!linha) throw new Error(`backup ${where.id} não existe`)
       aplicarDados(linha, data)
       return copia(linha)
     },

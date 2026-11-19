@@ -16,7 +16,8 @@
  * desligado à noite.
  *
  * O QUE ELE CONTÉM:
- * - Gate de plano (trial e inadimplente não sobem nem baixam).
+ * - Gate de plano (inadimplente não sobe nem baixa; trial sobe UM full — LIC-05).
+ * - Só o servidor ATUAL da licença sobe e baixa (LIC-05, F15).
  * - Limite diário por licença (proteção de custo).
  * - Lock entre as máquinas da loja.
  * - Emissão e confirmação de URL assinada.
@@ -26,6 +27,7 @@ import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import { ZodError } from 'zod'
 import {
   findLicencaById,
+  assumirServidorSeVazio,
   criarBackup,
   findBackupById,
   marcarBackupConfirmado,
@@ -89,6 +91,9 @@ const QUEDA_SUSPEITA = 0.5
 /// de uma máquina que travou.
 const MINUTOS_LOCK = Math.ceil(TTL_UPLOAD_SEGUNDOS / 60)
 
+/// O que a máquina quer fazer com o backup. O trial só tem regra no envio (D-06).
+type OperacaoBackup = 'envio' | 'download'
+
 @Injectable()
 export class ErpBackupService {
   private readonly logger = new Logger(ErpBackupService.name)
@@ -115,26 +120,96 @@ export class ErpBackupService {
   }
 
   /**
-   * Carrega a licença e aplica o gate. Esta é a trava REAL do backup — a
-   * checagem no ERP só desabilita o botão, e botão desabilitado se reabilita
-   * com um F12. Quem decide é aqui.
+   * Carrega a licença, confere a máquina e aplica o gate. Esta é a trava REAL
+   * do backup — a checagem no ERP só desabilita o botão, e botão desabilitado
+   * se reabilita com um F12. Quem decide é aqui.
+   *
+   * Ordem (LIC-05): a licença existe → a máquina é o servidor atual → o plano
+   * permite a operação.
    */
-  private async carregarLicencaLiberada(licencaId: string) {
-    const licenca = await findLicencaById(licencaId)
+  private async carregarLicencaLiberada(
+    licencaId: string,
+    hwidToken: string | null,
+    hwidPedido: string,
+    operacao: OperacaoBackup,
+  ) {
+    const licenca = await this.carregarLicenca(licencaId)
+    await this.exigirServidorAtual(licenca, hwidToken, hwidPedido)
 
-    if (!licenca)
-      throw this.erro(HttpStatus.NOT_FOUND, 'BACKUP_LICENCA_NAO_ENCONTRADA', 'Licença não encontrada.')
-
-    const motivo = this.motivoDeBloqueio(licenca)
+    const motivo = this.motivoDeBloqueio(licenca, {
+      operacao,
+      trialJaTemFull: await this.trialJaTemFull(licenca),
+    })
     if (motivo)
-      throw this.erro(HttpStatus.FORBIDDEN, 'BACKUP_PLANO_INATIVO', motivo.mensagem)
+      throw this.erro(
+        HttpStatus.FORBIDDEN,
+        // O trial que já usou o seu full recebe um código próprio no envio,
+        // para o ERP explicar "assine para ter backups contínuos" (D-06).
+        motivo.codigo === 'TRIAL_BACKUP_USADO' ? 'BACKUP_TRIAL_LIMITE' : 'BACKUP_PLANO_INATIVO',
+        motivo.mensagem,
+      )
 
     return licenca
+  }
+
+  private async carregarLicenca(licencaId: string) {
+    const licenca = await findLicencaById(licencaId)
+    if (!licenca)
+      throw this.erro(HttpStatus.NOT_FOUND, 'BACKUP_LICENCA_NAO_ENCONTRADA', 'Licença não encontrada.')
+    return licenca
+  }
+
+  /**
+   * O backup só entra e sai pelo SERVIDOR ATUAL da licença (LIC-05, F15, F29).
+   *
+   * Sem isto, o token de um servidor antigo (trocado, mas com token ainda
+   * dentro dos 7 dias) baixava o backup da empresa inteira.
+   *
+   * `hwidPedido` é o hwid que veio no corpo (envio e download); o /status não
+   * tem corpo e não passa nada.
+   */
+  private async exigirServidorAtual(
+    licenca: { id: string; hwidServidor: string | null },
+    hwidToken: string | null,
+    hwidPedido?: string,
+  ) {
+    // F29: o token precisa dizer de qual máquina ele é.
+    if (!hwidToken)
+      throw this.erro(HttpStatus.FORBIDDEN, 'BACKUP_HWID_AUSENTE',
+                      'O token não tem a identificação da máquina.')
+
+    // Já existia: o hwid do corpo tem que ser o mesmo do token.
+    if (hwidPedido !== undefined && hwidPedido !== hwidToken)
+      throw this.erro(HttpStatus.FORBIDDEN, 'BACKUP_HWID_DIVERGENTE',
+                      'HWID informado não corresponde ao da sessão autenticada.')
+
+    // D-33: licença antiga, sem servidor registrado. Quem chama a rota de
+    // backup É o servidor (os caixas não fazem backup), com identidade
+    // assinada pela API. Grava só se ainda estiver vazio; se duas chamadas
+    // chegarem juntas, a primeira vence e a outra cai na regra abaixo.
+    let servidor = licenca.hwidServidor
+    if (!servidor) servidor = await assumirServidorSeVazio(licenca.id, hwidToken)
+
+    if (servidor !== hwidToken)
+      throw this.erro(HttpStatus.FORBIDDEN, 'BACKUP_MAQUINA_REVOGADA',
+                      'Esta máquina não é mais o servidor desta licença. O backup só é aceito do servidor atual.')
+  }
+
+  /** Trial que já tem um full confirmado (D-06). Para licença paga, nem consulta. */
+  private async trialJaTemFull(licenca: { id: string; isTrial: boolean }): Promise<boolean> {
+    if (!licenca.isTrial) return false
+    return Boolean(await findUltimoFullConfirmado(licenca.id))
   }
 
   /**
    * Regra única de "esta licença tem direito a backup", usada tanto pelo gate
    * quanto pelo /status (que precisa responder sem estourar exceção).
+   *
+   * Trial (LIC-05, D-06): um full, e nada mais. A regra só vale para o ENVIO;
+   * o download do trial segue as mesmas regras das licenças pagas. O /status
+   * responde pela regra do envio: o ERP instalado para em silêncio quando
+   * `planoPermiteBackup` é false, então é aqui que o trial ganha (e depois
+   * encerra) o seu backup, até nas versões antigas do app.
    *
    * Vale para upload E download: a decisão foi tratar backup como recurso do
    * plano ativo. Quem vence não perde o arquivo na hora — ele fica na nuvem pelo
@@ -145,16 +220,19 @@ export class ErpBackupService {
    * Sem o código o /status era a única resposta da API que obrigava o cliente a
    * comparar string — exatamente o que o resto do contrato proíbe.
    */
-  private motivoDeBloqueio(licenca: {
-    status: string
-    isTrial: boolean
-    dataVencimento: Date | null
-  }): { codigo: string; mensagem: string } | null {
-    if (licenca.isTrial)
+  private motivoDeBloqueio(
+    licenca: { status: string; isTrial: boolean; dataVencimento: Date | null },
+    contexto: { operacao: OperacaoBackup; trialJaTemFull: boolean },
+  ): { codigo: string; mensagem: string } | null {
+    // Trial: o envio para depois do primeiro full. O código antigo `TRIAL`
+    // (que bloqueava tudo) deixou de existir.
+    if (licenca.isTrial && contexto.operacao === 'envio' && contexto.trialJaTemFull)
       return {
-        codigo:   'TRIAL',
-        mensagem: 'Backup em nuvem não está disponível durante o período de teste.',
+        codigo:   'TRIAL_BACKUP_USADO',
+        mensagem: 'O período de teste permite um backup completo. Assine para ter backups contínuos.',
       }
+
+    // Daqui para baixo, igual a antes, para trial e pago.
 
     // O código carrega o nome do enum (LICENCA_SUSPENSA, LICENCA_REVOGADA, ...)
     // porque "por que estou bloqueado" e "qual o estado da licença" são a mesma
@@ -212,14 +290,15 @@ export class ErpBackupService {
 
   async urlUpload(licencaId: string, hwidToken: string | null, body: unknown) {
     const dados   = this.parseBody(urlUploadBackupSchema, body)
-    const licenca = await this.carregarLicencaLiberada(licencaId)
+    const licenca = await this.carregarLicencaLiberada(licencaId, hwidToken, dados.hwid, 'envio')
     const tipo    = this.paraTipoDb(dados.tipo)
 
-    if (hwidToken && dados.hwid !== hwidToken)
+    // Segunda barreira do trial (D-06): o único envio dele é um FULL.
+    if (licenca.isTrial && tipo !== 'FULL')
       throw this.erro(
         HttpStatus.FORBIDDEN,
-        'BACKUP_HWID_DIVERGENTE',
-        'HWID informado não corresponde ao da sessão autenticada.',
+        'BACKUP_TRIAL_LIMITE',
+        'O período de teste permite um backup completo. Assine para ter backups contínuos.',
       )
 
     const ciclo = cicloAtual()
@@ -411,13 +490,17 @@ export class ErpBackupService {
     }
   }
 
-  async status(licencaId: string) {
-    const licenca = await findLicencaById(licencaId)
+  async status(licencaId: string, hwidToken: string | null) {
+    const licenca = await this.carregarLicenca(licencaId)
+    // Só o servidor atual consulta (LIC-05). Aqui também é onde a licença
+    // antiga sem servidor ganha o seu (D-33): o ERP lê o /status antes de enviar.
+    await this.exigirServidorAtual(licenca, hwidToken)
 
-    if (!licenca)
-      throw this.erro(HttpStatus.NOT_FOUND, 'BACKUP_LICENCA_NAO_ENCONTRADA', 'Licença não encontrada.')
-
-    const motivo = this.motivoDeBloqueio(licenca)
+    // O /status responde pela regra do ENVIO (é o que o ERP vai fazer a seguir).
+    const motivo = this.motivoDeBloqueio(licenca, {
+      operacao:       'envio',
+      trialJaTemFull: await this.trialJaTemFull(licenca),
+    })
 
     const ciclo = cicloAtual()
 
@@ -484,14 +567,7 @@ export class ErpBackupService {
 
   async urlDownload(licencaId: string, hwidToken: string | null, body: unknown) {
     const dados = this.parseBody(urlDownloadBackupSchema, body)
-    await this.carregarLicencaLiberada(licencaId)
-
-    if (hwidToken && dados.hwid !== hwidToken)
-      throw this.erro(
-        HttpStatus.FORBIDDEN,
-        'BACKUP_HWID_DIVERGENTE',
-        'HWID informado não corresponde ao da sessão autenticada.',
-      )
+    await this.carregarLicencaLiberada(licencaId, hwidToken, dados.hwid, 'download')
 
     const ciclo = dados.ciclo ?? cicloAtual()
 

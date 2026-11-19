@@ -331,6 +331,15 @@ export class DispositivoService {
     return new HttpException({ codigo, message }, status)
   }
 
+  /** 402 LICENCA_VENCIDA do /licenca/conectar (LIC-05, F27). */
+  private erroVencida(): HttpException {
+    return this.erro(
+      HttpStatus.PAYMENT_REQUIRED,
+      'LICENCA_VENCIDA',
+      'Sua licença está vencida. Renove a assinatura para ativar o sistema neste computador.',
+    )
+  }
+
   private limiteDe(licenca: { plano?: { limiteUsuario?: number | null } | null; usuariosExtras?: number | null }): number {
     return (licenca.plano?.limiteUsuario ?? 1) + (licenca.usuariosExtras ?? 0)
   }
@@ -743,12 +752,19 @@ export class DispositivoService {
     // dos dois mundos, e difícil de diagnosticar do lado dele.
     const emCarencia = this.carenciaVigente(licenca)
 
+    // Vencimento sai com código e 402 Payment Required (LIC-05, F27): o app da
+    // loja já trata 402 como "renove", inclusive nas versões instaladas
+    // (ADR-004). Vale para a licença que o cron já marcou como VENCIDA e para
+    // a que venceu agora (que é marcada aqui, como antes).
+    if (licenca.status === 'VENCIDA' && !emCarencia)
+      throw this.erroVencida()
+
     if (licenca.status !== 'ATIVA' && !(licenca.status === 'VENCIDA' && emCarencia))
       throw new BadRequestException(`Licença ${licenca.status.toLowerCase()}. Acesso negado.`)
 
     if (licenca.dataVencimento && licenca.dataVencimento < new Date() && !emCarencia) {
       await updateLicenca(licenca.id, { status: 'VENCIDA' })
-      throw new BadRequestException('Licença vencida.')
+      throw this.erroVencida()
     }
 
     const limite = this.limiteDe(licenca)

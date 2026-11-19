@@ -24,6 +24,27 @@ export async function hwidEstaRevogado(licencaId: string, hwid: string) {
 }
 
 /**
+ * Licença antiga, sem servidor registrado (LIC-05, D-33): grava `hwid` como
+ * servidor SÓ se o campo ainda estiver vazio, e devolve quem ficou gravado.
+ *
+ * O `updateMany` com a condição `hwidServidor: null` é feito pelo banco num
+ * passo só: se duas chamadas chegarem juntas, só a primeira grava, e a segunda
+ * recebe de volta o hwid da primeira (e é tratada pela regra normal).
+ */
+export async function assumirServidorSeVazio(licencaId: string, hwid: string): Promise<string | null> {
+  await prisma.licenca.updateMany({
+    // Vazio é nulo ou texto vazio: os dois contam como "sem servidor".
+    where: { id: licencaId, OR: [{ hwidServidor: null }, { hwidServidor: '' }] },
+    data:  { hwidServidor: hwid },
+  })
+  const licenca = await prisma.licenca.findUnique({
+    where:  { id: licencaId },
+    select: { hwidServidor: true },
+  })
+  return licenca?.hwidServidor ?? null
+}
+
+/**
  * Grava `hwidNovo` como servidor da licença, num passo só.
  *
  * Com `hwidAntigo` (troca de servidor): ele vai para a lista de revogados e a

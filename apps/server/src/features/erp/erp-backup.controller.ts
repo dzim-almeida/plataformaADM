@@ -33,7 +33,8 @@ export class ErpBackupController {
 
   @Get('status')
   status(@Req() req: ReqErp) {
-    return this.erpBackupService.status(req.erp.licencaId)
+    // O hwid do token vai junto: só o servidor atual consulta (LIC-05).
+    return this.erpBackupService.status(req.erp.licencaId, req.erp.hwid)
   }
 
   @Post('url-download')
