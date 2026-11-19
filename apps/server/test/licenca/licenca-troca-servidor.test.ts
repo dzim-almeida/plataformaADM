@@ -74,7 +74,9 @@ describe('Troca de servidor — login da conta por outro computador', () => {
     senhaHash ??= await bcrypt.hash(SENHA, 4)
   })
 
-  it('revoga só o servidor antigo, libera a vaga dele e mantém o caixa', async () => {
+  // LIC-09 (F17): na troca, as sessões dos caixas da loja antiga também saem
+  // (a API não sabe de qual servidor cada caixa era). Antes o caixa ficava.
+  it('revoga só o servidor antigo e libera as vagas da loja antiga (LIC-09)', async () => {
     cadastrar()
     sessao(DESKTOP)
     sessao(CAIXA)
@@ -84,8 +86,8 @@ describe('Troca de servidor — login da conta por outro computador', () => {
 
     assert.equal(r.chaveAtivacao, CHAVE)
     assert.equal(licencaAtual().hwidServidor, NOTEBOOK)
-    assert.deepEqual(revogados(), [DESKTOP])
-    assert.deepEqual(hwidsComSessao(), [CAIXA, NOTEBOOK])
+    assert.deepEqual(revogados(), [DESKTOP])                  // o caixa NÃO é revogado
+    assert.deepEqual(hwidsComSessao(), [NOTEBOOK])
     assert.equal(eventos('TROCA_SERVIDOR').length, 1)
     assert.equal(eventos('TROCA_DISPOSITIVO').length, 0, 'a troca não pode contar duas vezes')
     assert.equal(emails.length, 1)
@@ -109,16 +111,20 @@ describe('Troca de servidor — login da conta por outro computador', () => {
     assert.ok(!hwidsComSessao().includes(DESKTOP))
   })
 
-  it('o caixa continua batendo depois da troca', async () => {
+  // LIC-09: a sessão do caixa saiu na troca. Ele não é revogado: o heartbeat
+  // sem token recebe 404 (nunca 400, que bloquearia a licença no app
+  // instalado) e o caixa volta pelo login, que conecta de novo.
+  it('o caixa da loja antiga entra de novo pelo login depois da troca (LIC-09)', async () => {
     cadastrar()
     sessao(DESKTOP)
     sessao(CAIXA)
     const { dispositivos, login } = montar()
     await login(NOTEBOOK)
 
-    assert.deepEqual(await dispositivos.heartbeat({ licencaId: LICENCA, hwid: CAIXA }), { ok: true })
+    await assert.rejects(dispositivos.heartbeat({ licencaId: LICENCA, hwid: CAIXA }), recusa(404, 'SESSAO_INEXISTENTE'))
     const c = await dispositivos.conectar({ chave: CHAVE, hwid: CAIXA })
-    assert.equal(c.msg, 'Reconexão autorizada.')
+    assert.equal(c.msg, 'Conexão autorizada.')
+    assert.deepEqual(await dispositivos.heartbeat({ licencaId: LICENCA, hwid: CAIXA }), { ok: true })
   })
 
   it('voltar para o computador antigo pela conta tira ele da lista e revoga o outro', async () => {
@@ -168,12 +174,24 @@ describe('Heartbeat sem sessão — internet que caiu x vaga perdida', () => {
     senhaHash ??= await bcrypt.hash(SENHA, 4)
   })
 
-  it('o cron apagou a sessão e cabe: recria', async () => {
+  // LIC-09 (D-37): só o heartbeat COM o token da licença (app novo) recria a
+  // sessão. Sem token (app instalado), a resposta é 404 e nada é criado.
+  const comToken = { licencaId: LICENCA, hwid: NOTEBOOK }
+
+  it('o cron apagou a sessão e cabe: com token, recria', async () => {
     cadastrar()
     const { dispositivos } = montar()
 
-    assert.deepEqual(await dispositivos.heartbeat({ licencaId: LICENCA, hwid: CAIXA }), { ok: true })
+    assert.deepEqual(await dispositivos.heartbeat({ licencaId: LICENCA, hwid: CAIXA }, comToken), { ok: true })
     assert.deepEqual(hwidsComSessao(), [CAIXA])
+  })
+
+  it('o cron apagou a sessão: sem token, 404 SESSAO_INEXISTENTE e nada criado', async () => {
+    cadastrar()
+    const { dispositivos } = montar()
+
+    await assert.rejects(dispositivos.heartbeat({ licencaId: LICENCA, hwid: CAIXA }), recusa(404, 'SESSAO_INEXISTENTE'))
+    assert.deepEqual(hwidsComSessao(), [])
   })
 
   it('a licença está cheia: recusa e não ocupa vaga', async () => {
@@ -182,7 +200,7 @@ describe('Heartbeat sem sessão — internet que caiu x vaga perdida', () => {
     sessao(CAIXA)
     const { dispositivos } = montar()
 
-    await assert.rejects(dispositivos.heartbeat({ licencaId: LICENCA, hwid: 'hwid-intruso' }), recusa(400, 'LIMITE_DISPOSITIVOS'))
+    await assert.rejects(dispositivos.heartbeat({ licencaId: LICENCA, hwid: 'hwid-intruso' }, comToken), recusa(400, 'LIMITE_DISPOSITIVOS'))
     assert.deepEqual(hwidsComSessao(), [CAIXA, NOTEBOOK])
   })
 
@@ -204,7 +222,9 @@ describe('Login autenticado com a licença cheia', () => {
 
   it('derruba só a sessão mais antiga, não a loja inteira', async () => {
     cadastrar({ hwidServidor: null })
-    sessao('hwid-velho', minutos(-30))
+    // LIC-09 (D-10): a mais antiga ainda VIVA (5 min). Uma de 30 min já está
+    // morta e não ocupa vaga: o login entraria sem derrubar ninguém.
+    sessao('hwid-velho', minutos(-5))
     sessao(CAIXA, minutos(-1))
     const { login, emails } = montar()
 

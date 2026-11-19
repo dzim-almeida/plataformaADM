@@ -14,6 +14,11 @@
  * MÁQUINA do token foi revogada (servidor antigo, depois de uma troca). Sem
  * isso, o token de uma máquina já trocada continuava valendo por até 7 dias e
  * conseguia baixar o backup da empresa inteira.
+ *
+ * LIC-09 (ACORDO D-37): o `ErpLicencaGuardOpcional` faz a mesma conferência no
+ * heartbeat, mas deixa passar o pedido SEM token (versões instaladas do app,
+ * ADR-004). Nesse caso a rota recebe `request.erp = null` e trata com menos
+ * poder: só renova sessão que já existe.
  * ============================================================================
  */
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common'
@@ -43,6 +48,18 @@ export function lerTokenDaLicenca(request: any, publicKey: string): any | null {
   }
 }
 
+/**
+ * Recusa o token de máquina revogada (servidor antigo, depois de uma troca).
+ * Usada pelos dois guards.
+ */
+async function recusarSeRevogado(payload: any): Promise<void> {
+  if (payload.hwid && await hwidEstaRevogado(payload.licencaId, payload.hwid))
+    throw new UnauthorizedException({
+      codigo:  'LICENCA_HWID_REVOGADO',
+      message: 'Esta máquina não é mais o servidor desta licença.',
+    })
+}
+
 @Injectable()
 export class ErpLicencaGuard implements CanActivate {
   constructor(private readonly dispositivoService: DispositivoService) {}
@@ -57,13 +74,32 @@ export class ErpLicencaGuard implements CanActivate {
     // A regra aqui é só "a máquina não foi revogada". Ser o servidor ATUAL é
     // exigido só no backup (erp-backup.service): o login sem hwid gera um token
     // com identificador próprio (login-<uuid>), que nunca está nesta lista.
-    if (payload.hwid && await hwidEstaRevogado(payload.licencaId, payload.hwid))
-      throw new UnauthorizedException({
-        codigo:  'LICENCA_HWID_REVOGADO',
-        message: 'Esta máquina não é mais o servidor desta licença.',
-      })
+    await recusarSeRevogado(payload)
 
     request.erp = payload   // as rotas leem licencaId e hwid daqui
+    return true
+  }
+}
+
+/**
+ * Igual ao ErpLicencaGuard, mas o token é OPCIONAL (LIC-09, transição da
+ * ADR-004). Com token: confere assinatura, validade e revogação. Sem token:
+ * deixa passar com `request.erp = null`.
+ *
+ * O caminho sem token tem DATA PARA ACABAR (ACORDO §7): quando as lojas
+ * tiverem atualizado o app, a rota passa a usar o guard obrigatório.
+ */
+@Injectable()
+export class ErpLicencaGuardOpcional implements CanActivate {
+  constructor(private readonly dispositivoService: DispositivoService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest()
+    const payload = lerTokenDaLicenca(request, this.dispositivoService.getPublicKey())
+
+    if (payload) await recusarSeRevogado(payload)
+
+    request.erp = payload ?? null
     return true
   }
 }

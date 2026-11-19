@@ -41,6 +41,7 @@ import {
   upsertLicencaSessao,
   findLicencaSessao,
   countSessoesAtivas,
+  ocuparVagaSeCouber,
   deletarSessao,
   deletarTodasSessoesDaLicenca,
   deletarSessoesMaisAntigas,
@@ -101,7 +102,6 @@ export const autoCadastroSchema = z.object({
   }).optional()
 })
 
-const HEARTBEAT_TIMEOUT_MS = 35 * 60 * 1000   // sessão morta se sem heartbeat por 35 min
 const CLEANUP_INTERVAL_MS  = 10 * 60 * 1000   // verifica sessões inativas a cada 10 min
 const FLUSH_INTERVAL_MS    = 30 * 1000         // flush do buffer no banco a cada 30s
 const GRACE_PERIOD_DIAS    = 7
@@ -797,28 +797,29 @@ export class DispositivoService {
       ? await this.assumirServidor(licenca, dados.hwid, dados.nomeComputador)
       : false
 
-    // Depois do assumirServidor: a troca já apagou a sessão do servidor antigo.
-    let countSessoes = await countSessoesAtivas(licenca.id)
-    const reconexao  = !!(await findLicencaSessao(licenca.id, dados.hwid))
+    // Depois do assumirServidor: a troca já apagou as sessões da loja antiga.
+    const reconexao = !!(await findLicencaSessao(licenca.id, dados.hwid))
+    const msgLimite =
+      `Limite de ${limite} dispositivo(s) simultâneo(s) atingido. Encerre outra sessão e tente novamente.`
 
-    if (!reconexao && countSessoes >= limite) {
+    // Conta e grava a vaga com a licença trancada (LIC-09, F6): dois caixas
+    // entrando juntos não passam do limite.
+    let entrou = await ocuparVagaSeCouber(licenca.id, dados.hwid, limite, dados.nomeComputador)
+
+    if (!entrou) {
       // Login autenticado (email+senha) já provou a identidade do dono da licença —
       // nesse caso é seguro liberar vaga num dispositivo novo (reinstalação/troca
       // de máquina). Via chave de ativação pura isso continua bloqueado, pois a
       // chave sozinha não prova quem está conectando.
-      if (!opts?.autenticado)
-        throw new BadRequestException(
-          `Limite de ${limite} dispositivo(s) simultâneo(s) atingido. Encerre outra sessão e tente novamente.`
-        )
+      if (!opts?.autenticado) throw new BadRequestException(msgLimite)
 
       // A troca de servidor já contou, registrou e avisou — não conta duas vezes.
       if (!trocouServidor) await this.exigirTrocaDisponivel(licenca.id)
 
       // Só as que excedem, as de heartbeat mais antigo: o caixa aberto agora
       // continua vendendo. Antes derrubava todas.
-      const excedentes = countSessoes - limite + 1
+      const excedentes = (await countSessoesAtivas(licenca.id)) - limite + 1
       await deletarSessoesMaisAntigas(licenca.id, excedentes)
-      countSessoes -= excedentes
 
       if (!trocouServidor) {
         await registrarEventoLicenca(licenca.id, {
@@ -828,10 +829,15 @@ export class DispositivoService {
         })
         await this.avisarTrocaDeComputador(licenca, dados.hwid, dados.nomeComputador)
       }
+
+      // Tenta de novo, com a vaga liberada. Só falha se outro computador
+      // ocupou a vaga no meio (corrida rara): aí a resposta é o limite.
+      entrou = await ocuparVagaSeCouber(licenca.id, dados.hwid, limite, dados.nomeComputador)
+      if (!entrou) throw new BadRequestException(msgLimite)
     }
 
-    await upsertLicencaSessao(licenca.id, dados.hwid, dados.nomeComputador)
-    const novoTotalSessoes = reconexao ? countSessoes : countSessoes + 1
+    // O total sai da contagem (só sessões vivas), e não de uma conta de cabeça.
+    const novoTotalSessoes = await countSessoesAtivas(licenca.id)
     await updateLicenca(licenca.id, { totalUsuarios: novoTotalSessoes, ultimoHeartbeat: new Date() })
 
     return {
@@ -858,8 +864,27 @@ export class DispositivoService {
     return { msg: 'Desconectado.' }
   }
 
-  async heartbeat(body: unknown) {
+  /**
+   * Heartbeat de um computador da loja (LIC-09, ACORDO D-37).
+   *
+   * `erp` é o token da licença já conferido pelo ErpLicencaGuardOpcional, ou
+   * `null` quando o pedido veio sem token (versões instaladas do app).
+   *
+   * | Pedido               | Sessão existe | Sessão não existe             |
+   * |----------------------|---------------|-------------------------------|
+   * | Com token            | Renova        | Cria, se couber               |
+   * | Sem token            | Renova        | 404 SESSAO_INEXISTENTE        |
+   * | Token de outra licença | 403 HEARTBEAT_LICENCA_DIVERGENTE              |
+   *
+   * NENHUMA recusa nova é 400: o app instalado trata 400 como "caixa
+   * bloqueado" e, se todos os caixas recebem 400, bloqueia a licença da loja.
+   */
+  async heartbeat(body: unknown, erp: { licencaId: string; hwid?: string | null } | null = null) {
     const dados   = this.parseBody(heartbeatSchema, body)
+
+    // O token prova de qual licença o pedido vem; o corpo não pode dizer outra.
+    if (erp && erp.licencaId !== dados.licencaId)
+      throw this.erro(HttpStatus.FORBIDDEN, 'HEARTBEAT_LICENCA_DIVERGENTE', 'O token não é desta licença.')
     
     // Validação em Tempo Real: checa se a licença mãe foi bloqueada/suspensa
     const licenca = await findLicencaById(dados.licencaId)
@@ -878,20 +903,32 @@ export class DispositivoService {
       if (await hwidEstaRevogado(dados.licencaId, dados.hwid))
         throw this.erro(HttpStatus.BAD_REQUEST, 'LICENCA_TRANSFERIDA', MSG_LICENCA_TRANSFERIDA)
 
-      // Sem sessão pode ser só o cron (35 min sem internet): recria — mas só se
-      // couber. Antes recriava sempre, e um computador fora do limite voltava a
-      // ocupar vaga sozinho a cada heartbeat.
-      if (!(await findLicencaSessao(dados.licencaId, dados.hwid))) {
+      if (await findLicencaSessao(dados.licencaId, dados.hwid)) {
+        // Sessão existe: renova (com ou sem token).
+        await upsertLicencaSessao(dados.licencaId, dados.hwid)
+      } else {
+        // Sem token (versão instalada): NÃO cria. Sem esta regra, quem
+        // soubesse o licencaId ocupava as vagas da loja com HWIDs inventados.
+        // 404 e nunca 400 (ver o comentário da função). O app novo reconecta
+        // o caixa na hora; o antigo só registra no log, e a sessão volta no
+        // próximo login do caixa.
+        if (!erp)
+          throw this.erro(
+            HttpStatus.NOT_FOUND,
+            'SESSAO_INEXISTENTE',
+            'Sessão não encontrada. Conecte o caixa de novo.',
+          )
+
+        // Com token: sem sessão pode ser só o cron (10 min sem internet):
+        // recria, mas só se couber, com a licença trancada (D-38).
         const limite = this.limiteDe(licenca)
-        if (await countSessoesAtivas(dados.licencaId) >= limite)
+        if (!(await ocuparVagaSeCouber(dados.licencaId, dados.hwid, limite)))
           throw this.erro(
             HttpStatus.BAD_REQUEST,
             'LIMITE_DISPOSITIVOS',
             `Limite de ${limite} dispositivo(s) simultâneo(s) atingido. Conexão encerrada pelo servidor.`,
           )
       }
-
-      await upsertLicencaSessao(dados.licencaId, dados.hwid)
     }
     
     // Atualiza a mãe de forma leve para saber que há atividade

@@ -20,6 +20,7 @@
     "backup:simular": "dotenv -e apps/server/.env -- tsx scripts/simular-limpeza-backup.ts",
     "backup:testar-email": "dotenv -e apps/server/.env -- tsx scripts/testar-email-retencao.ts",
     "fiscal:censo": "dotenv -e apps/server/.env -- tsx scripts/censo-fiscal.ts",
+    "licenca:testar-corrida": "dotenv -e apps/server/.env -- tsx scripts/testar-corrida-vagas.ts",
     "deploy": "git pull && npm install && npm run db:push && npm run build && pm2 restart api web --update-env"
   },
   "prisma": {

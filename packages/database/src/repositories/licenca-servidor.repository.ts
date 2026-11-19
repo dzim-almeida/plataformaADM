@@ -48,8 +48,8 @@ export async function assumirServidorSeVazio(licencaId: string, hwid: string): P
  * Grava `hwidNovo` como servidor da licença, num passo só.
  *
  * Com `hwidAntigo` (troca de servidor): ele vai para a lista de revogados e a
- * sessão dele é apagada, liberando a vaga. Só o servidor antigo — os caixas são
- * os mesmos computadores e continuam na loja nova. `hwidNovo` sai da lista, se
+ * sessão dele é apagada, liberando a vaga. Desde a LIC-09, as sessões dos caixas
+ * também saem (todas menos a do servidor novo). `hwidNovo` sai da lista, se
  * estava nela: o dono decidiu voltar para aquele computador.
  */
 export async function assumirServidorDaLicenca(licencaId: string, hwidNovo: string, hwidAntigo: string | null) {
@@ -65,7 +65,12 @@ export async function assumirServidorDaLicenca(licencaId: string, hwidNovo: stri
         update: { revogadoEm: new Date() },
         create: { licencaId, hwid: hwidAntigo },
       }),
-      prisma.licencaSessao.deleteMany({ where: { licencaId, hwid: hwidAntigo } }),
+      // LIC-09 (F17): a API não sabe quais caixas eram de qual servidor (a
+      // sessão guarda só o HWID). Na troca, TODAS as sessões da licença saem,
+      // menos a do servidor novo; os caixas da loja nova entram de novo pelo
+      // login deles. Antes saía só a do servidor antigo, e os caixas da loja
+      // antiga continuavam ocupando vaga.
+      prisma.licencaSessao.deleteMany({ where: { licencaId, hwid: { not: hwidNovo } } }),
     )
   }
 

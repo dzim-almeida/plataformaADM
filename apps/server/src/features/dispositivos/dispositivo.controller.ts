@@ -14,9 +14,10 @@
  * - Respostas HTTP formatadas para o cliente.
  * ============================================================================
  */
-import { Controller, Post, Patch, Get, Delete, Param, Body, Query } from '@nestjs/common'
+import { Controller, Post, Patch, Get, Delete, Param, Body, Query, Req, UseGuards } from '@nestjs/common'
 import { DispositivoService } from './dispositivo.service'
 import { Public } from '../../core/decorators/public.decorator'
+import { ErpLicencaGuardOpcional } from '../../core/guards/erp-licenca.guard'
 
 @Controller('licenca')
 export class DispositivoController {
@@ -91,10 +92,13 @@ export class DispositivoController {
     return this.dispositivoService.desconectar(body)
   }
 
+  // Usada pelo app da loja. `@Public()` tira o guard do painel do caminho; o
+  // guard opcional confere o token da licença quando ele vem (LIC-09, D-37).
   @Public()
   @Post('heartbeat')
-  async heartbeat(@Body() body: unknown) {
-    return this.dispositivoService.heartbeat(body)
+  @UseGuards(ErpLicencaGuardOpcional)
+  async heartbeat(@Req() req: any, @Body() body: unknown) {
+    return this.dispositivoService.heartbeat(body, req.erp)
   }
 
   @Public()

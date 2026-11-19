@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Body } from '@nestjs/common'
+import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common'
 import { DispositivoService } from '../dispositivos/dispositivo.service'
 import { ErpAuthService } from './erp-auth.service'
 import { Public } from '../../core/decorators/public.decorator'
+import { ErpLicencaGuardOpcional } from '../../core/guards/erp-licenca.guard'
 
 @Public()
 @Controller('erp')
@@ -31,9 +32,11 @@ export class ErpLicencaController {
     return this.dispositivoService.desconectar(body)
   }
 
+  // Gêmea de POST /licenca/heartbeat: token da licença opcional (LIC-09, D-37).
   @Post('heartbeat')
-  heartbeat(@Body() body: unknown) {
-    return this.dispositivoService.heartbeat(body)
+  @UseGuards(ErpLicencaGuardOpcional)
+  heartbeat(@Req() req: any, @Body() body: unknown) {
+    return this.dispositivoService.heartbeat(body, req.erp)
   }
 
   @Post('validar')

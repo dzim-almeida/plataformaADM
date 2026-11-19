@@ -20,6 +20,7 @@ import {
   marcarLicencasVencidasBatch,
   findLicencasExpirandoOuVencidas,
   deletarSessoesInativas,
+  MINUTOS_SESSAO_VIVA,
   findBackupsDeLicencasMortas,
   findBackupsPendentesExpirados,
   findCiclosSuperados,
@@ -95,7 +96,9 @@ export class CronService {
   async handleGarbageCollector() {
     this.logger.debug('Executando Garbage Collector de Sessões Inativas...')
     try {
-      const result = await deletarSessoesInativas(35) // 35 minutos
+      // Mesmo prazo da contagem das vagas (LIC-09, D-10). O cron só limpa as
+      // linhas: a sessão morta já tinha deixado de ocupar vaga na contagem.
+      const result = await deletarSessoesInativas(MINUTOS_SESSAO_VIVA)
       if (result.count > 0) {
         this.logger.log(`[GC] ${result.count} sessão(ões) órfã(s) liberada(s) por inatividade.`)
       }

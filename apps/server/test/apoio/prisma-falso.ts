@@ -108,7 +108,15 @@ const novoId = (prefixo: string) => `${prefixo}-${++sequencia}`
 export const prismaFalso = {
   // As operações já rodaram quando chegam aqui (funções async são ansiosas):
   // basta esperar. Não há rollback — os testes não dependem dele.
-  $transaction: async (operacoes: Promise<unknown>[]) => Promise.all(operacoes),
+  //
+  // Também aceita uma FUNÇÃO (transação interativa, LIC-09): ela recebe o
+  // próprio banco falso. Sem `await` entre as operações do JS, o código roda
+  // "um de cada vez", como a trava do `FOR UPDATE` faz no Postgres.
+  $transaction: async (operacoes: Promise<unknown>[] | ((tx: any) => Promise<unknown>)) =>
+    typeof operacoes === 'function' ? operacoes(prismaFalso) : Promise.all(operacoes),
+
+  /** `SELECT ... FOR UPDATE` (LIC-09): no banco falso não há o que trancar. */
+  $queryRaw: async (..._args: unknown[]) => [],
 
   licenca: {
     findUnique: async ({ where }: Linha) =>
