@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Req, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Body, Query, Req, UseGuards, HttpCode } from '@nestjs/common'
 import { DispositivoService } from '../dispositivos/dispositivo.service'
 import { ErpAuthService } from './erp-auth.service'
 import { Public } from '../../core/decorators/public.decorator'
@@ -17,9 +17,19 @@ export class ErpLicencaController {
     return { publicKey: this.dispositivoService.getPublicKey() }
   }
 
+  // Cadastro pelo app (LIC-06): sempre a mesma resposta, sem criar licença.
+  // 202 para o app novo; 409 CONFIRMACAO_NECESSARIA para as versões instaladas.
   @Post('auto-cadastro')
+  @HttpCode(202)
   autoCadastro(@Body() body: unknown) {
     return this.dispositivoService.autoCadastro(body)
+  }
+
+  // Aberta pela página confirmar-cadastro do painel web, a partir do link do
+  // e-mail. Cria a licença de teste (LIC-06, D-24).
+  @Get('auto-cadastro/confirmar')
+  confirmarCadastro(@Query('token') token?: string) {
+    return this.dispositivoService.confirmarCadastro(token)
   }
 
   @Post('conectar')

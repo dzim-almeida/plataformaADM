@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Query, Req, UseGuards } from '@nestjs/common'
+import { Controller, Get, Post, Put, Body, Query, Req, UseGuards } from '@nestjs/common'
 import { Request } from 'express'
 import { ErpUsuarioService } from './erp-usuario.service'
 import { ErpLicencaGuard } from '../../core/guards/erp-licenca.guard'
@@ -17,6 +17,22 @@ export class ErpUsuarioController {
   @Get('dados')
   getDados(@Req() req: Request & { erp: { licencaId: string } }) {
     return this.erpUsuarioService.getDados(req.erp.licencaId)
+  }
+
+  // Dados da empresa do titular, para o setup do app (LIC-06, D-28). Herdam o
+  // @Public() e o ErpLicencaGuard da classe: exigem o token da licença, e o
+  // token de máquina revogada recebe 401 (LIC-05).
+  @Get('titular')
+  lerTitular(@Req() req: Request & { erp: { licencaId: string } }) {
+    return this.erpUsuarioService.lerTitular(req.erp.licencaId)
+  }
+
+  @Put('titular')
+  atualizarTitular(
+    @Req() req: Request & { erp: { licencaId: string } },
+    @Body() body: unknown,
+  ) {
+    return this.erpUsuarioService.atualizarTitular(req.erp.licencaId, body)
   }
 
   @Post('alterar-senha')

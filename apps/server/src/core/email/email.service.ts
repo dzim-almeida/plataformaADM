@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common'
-import { randomUUID } from 'crypto'
+import { novoTokenDeLink } from '../seguranca/token-de-link'
 import { Resend } from 'resend'
 import { prisma, registrarEmail, type StatusEmail } from '@startbig/database'
 import { layout, paragrafo, nota, destaque, aviso, dados as tabelaDados, botao, esc, COR } from './email-layout'
@@ -14,6 +14,17 @@ export type TipoEmail =
   | 'CHAVE_ATIVACAO' | 'PRIMEIRO_ACESSO' | 'RENOVACAO' | 'FALHA_PAGAMENTO'
   | 'AVISO_VENCIMENTO' | 'RETENCAO_BACKUP' | 'TROCA_COMPUTADOR' | 'ALERTA_OPERACIONAL'
   | 'AVISO_FISCAL' | 'COBRANCA_EXCEDENTE'
+  | 'CONFIRMACAO_CADASTRO' | 'AVISO_CADASTRO'
+
+/** Endereço do painel web, onde ficam as páginas que os links abrem. */
+const appUrl = () => process.env.APP_URL ?? 'https://admin.startbig.com.br'
+
+/** Validade do link de nova senha / primeiro acesso: 7 dias, como antes. */
+const VALIDADE_LINK_SENHA_MS = 7 * 24 * 60 * 60 * 1000
+
+/** Link clicável + o endereço por extenso, para quando o botão não abrir. */
+const linkPorExtenso = (link: string) =>
+  paragrafo(`<span style="font-size:13px;color:${COR.apagado};">Se o botão não abrir, copie este endereço no navegador:<br><a href="${esc(link)}" style="color:${COR.primaria};word-break:break-all;">${esc(link)}</a></span>`)
 
 const reais = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -108,26 +119,32 @@ export class EmailService {
   }
 
   /**
+   * Grava um link novo de "criar senha" no cliente (válido por 7 dias) e
+   * devolve o endereço. O banco guarda só o HASH em `tokenSenha` (LIC-06,
+   * D-35); o link anterior deixa de valer. O `tokenEmail` não é tocado: ele é
+   * só da troca de e-mail, que pode estar pendente.
+   */
+  private async novoLinkDeSenha(clienteId: string): Promise<string> {
+    const { bruto, hash } = novoTokenDeLink()
+    await prisma.cliente.update({
+      where: { id: clienteId },
+      data:  { tokenSenha: hash, tokenSenhaExpiraEm: new Date(Date.now() + VALIDADE_LINK_SENHA_MS) },
+    })
+    return `${appUrl()}/primeiro-acesso?token=${bruto}`
+  }
+
+  /**
    * Gera o token de "criar senha", persiste no cliente (válido por 7 dias)
-   * e envia o e-mail com o link. Usado tanto no cadastro (auto-cadastro do
-   * ERP e cadastro manual pelo admin) quanto num reenvio manual, caso o
-   * cliente perca ou deixe expirar o link original.
+   * e envia o e-mail com o link. Usado no cadastro manual pelo admin, no
+   * reenvio manual do painel e no "Reenviar link" do app (LIC-06), que também
+   * serve para trocar uma senha que já existe (mitigação do R-01).
    */
   async enviarPrimeiroAcesso(dados: {
     clienteId:   string
     email:       string
     nomeCliente: string
   }) {
-    const token  = randomUUID()
-    const expira = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 dias
-
-    await prisma.cliente.update({
-      where: { id: dados.clienteId },
-      data:  { tokenEmail: token, tokenEmailExpiraEm: expira },
-    })
-
-    const appUrl = process.env.APP_URL ?? 'https://admin.startbig.com.br'
-    const link   = `${appUrl}/primeiro-acesso?token=${token}`
+    const link = await this.novoLinkDeSenha(dados.clienteId)
 
     await this.enviar('PRIMEIRO_ACESSO', {
       from:    FROM,
@@ -141,13 +158,114 @@ export class EmailService {
           ola(dados.nomeCliente),
           paragrafo('Sua empresa foi cadastrada com sucesso no StartBIG. Para entrar, crie a sua senha de acesso:'),
           botao('Criar minha senha', link),
-          paragrafo(`<span style="font-size:13px;color:${COR.apagado};">Se o botão não abrir, copie este endereço no navegador:<br><a href="${esc(link)}" style="color:${COR.primaria};word-break:break-all;">${esc(link)}</a></span>`),
+          linkPorExtenso(link),
           nota('Este link expira em 7 dias. Se não foi você quem se cadastrou, ignore este e-mail.'),
         ].join(''),
       }),
     })
 
     this.logger.log(`E-mail de primeiro acesso enviado para ${dados.email}`)
+  }
+
+  // ── LIC-06: e-mails do cadastro pelo app ──────────────────────────────────
+  // Nenhum deles leva a chave de ativação (ACORDO D-23, D-31): o app recebe a
+  // chave pelo login com e-mail e senha, depois da confirmação.
+
+  /** Link para confirmar o e-mail de um cadastro novo (24 h). */
+  async enviarConfirmacaoCadastro(dados: { email: string; nomeCliente: string; token: string }) {
+    const link = `${appUrl()}/confirmar-cadastro?token=${dados.token}`
+
+    await this.enviar('CONFIRMACAO_CADASTRO', {
+      from:    FROM,
+      to:      dados.email,
+      subject: 'Confirme o seu e-mail — StartBig',
+      html:    layout({
+        selo:      'Confirmação',
+        titulo:    'Confirme o seu e-mail',
+        preheader: 'Falta só confirmar o e-mail para liberar o seu período de teste.',
+        corpo: [
+          ola(dados.nomeCliente),
+          paragrafo('Recebemos o seu cadastro no StartBIG. Para liberar o período de teste, confirme que este e-mail é seu:'),
+          botao('Confirmar meu e-mail', link),
+          linkPorExtenso(link),
+          paragrafo('Depois de confirmar, volte ao StartBig e entre com o seu e-mail e senha.'),
+          nota('Este link expira em 24 horas. Se não foi você quem se cadastrou, ignore este e-mail.'),
+        ].join(''),
+      }),
+    })
+
+    this.logger.log(`Confirmação de cadastro enviada para ${dados.email}`)
+  }
+
+  /**
+   * Alguém tentou cadastrar um e-mail que JÁ tem conta. A API responde igual
+   * a um cadastro novo (para não revelar quem é cliente); só a caixa do dono
+   * recebe este aviso, com um link para criar uma nova senha se precisar.
+   */
+  async enviarAvisoJaCadastrado(dados: { clienteId: string; email: string; nomeCliente: string }) {
+    const link = await this.novoLinkDeSenha(dados.clienteId)
+
+    await this.enviar('AVISO_CADASTRO', {
+      from:    FROM,
+      to:      dados.email,
+      subject: 'Este e-mail já tem cadastro no StartBig',
+      html:    layout({
+        selo:      'Cadastro',
+        titulo:    'Este e-mail já tem cadastro',
+        preheader: 'Entre com a sua senha ou crie uma nova pelo link.',
+        corpo: [
+          ola(dados.nomeCliente),
+          paragrafo('Este e-mail já tem cadastro. Entre com a sua senha ou crie uma nova pelo link abaixo.'),
+          botao('Criar uma nova senha', link),
+          linkPorExtenso(link),
+          nota('O link expira em 7 dias. Se não foi você quem tentou o cadastro, ignore este e-mail: nada mudou na sua conta.'),
+        ].join(''),
+      }),
+    })
+
+    this.logger.log(`Aviso de e-mail já cadastrado enviado para ${dados.email}`)
+  }
+
+  /** Para quem pediu um cadastro com um CPF/CNPJ que já é de outra conta. */
+  async enviarAvisoDocumentoJaCadastrado(dados: { email: string }) {
+    await this.enviar('AVISO_CADASTRO', {
+      from:    FROM,
+      to:      dados.email,
+      subject: 'Sobre o seu cadastro no StartBig',
+      html:    layout({
+        selo:      'Cadastro',
+        titulo:    'Este CPF/CNPJ já está cadastrado',
+        preheader: 'Se a conta é sua, entre com o e-mail dela.',
+        corpo: [
+          paragrafo('Este CPF/CNPJ já está cadastrado na StartBig. Se a conta é sua, entre com o e-mail dela. Se não lembra qual é, fale com o suporte.'),
+          nota('Nenhuma conta nova foi criada.'),
+        ].join(''),
+      }),
+    })
+
+    this.logger.log(`Aviso de documento já cadastrado enviado para ${dados.email}`)
+  }
+
+  /** Para o TITULAR: alguém tentou um cadastro novo com o documento dele. */
+  async enviarAlertaDocumentoUsado(dados: { email: string; nomeCliente: string }) {
+    await this.enviar('AVISO_CADASTRO', {
+      from:    FROM,
+      to:      dados.email,
+      subject: 'Alerta de segurança — tentativa de cadastro com o seu CPF/CNPJ',
+      html:    layout({
+        selo:      'Alerta de segurança',
+        tom:       'atencao',
+        titulo:    'Tentaram um cadastro com o seu CPF/CNPJ',
+        preheader: 'Se foi você, ignore. Se não foi, fale com o suporte.',
+        corpo: [
+          ola(dados.nomeCliente),
+          paragrafo('Alguém tentou um cadastro novo com o seu CPF/CNPJ. Se foi você, ignore. Se não foi, fale com o suporte.'),
+          nota('Nenhuma conta nova foi criada, e a sua não mudou.'),
+        ].join(''),
+      }),
+    })
+
+    this.logger.log(`Alerta de documento usado enviado para ${dados.email}`)
   }
 
   async enviarRenovacao(dados: {

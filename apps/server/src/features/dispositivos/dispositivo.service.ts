@@ -14,7 +14,7 @@
  * - Comunicação com bibliotecas externas (ex: Stripe, Envio de E-mails).
  * ============================================================================
  */
-import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus, OnModuleInit, Logger } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException, ConflictException, HttpException, HttpStatus, OnModuleInit, Logger } from '@nestjs/common'
 import { generateKeyPairSync }                                                        from 'crypto'
 import { ZodError }                                                                   from 'zod'
 import { randomUUID }                                                                 from 'crypto'
@@ -66,6 +66,7 @@ import {
 import { EmailService } from '../../core/email/email.service'
 import { StripeService } from '../../common/stripe/stripe.service'
 import { dominioDeEmailExiste } from '../../core/validators/email-dominio.validator'
+import { hashDoToken, novoTokenDeLink } from '../../core/seguranca/token-de-link'
 import { z } from 'zod'
 
 export const autoCadastroSchema = z.object({
@@ -74,7 +75,10 @@ export const autoCadastroSchema = z.object({
   email: z.string().email(),
   senha: z.string().min(8, 'A senha deve ter no mínimo 8 caracteres.'),
   hwid: z.string().optional(),
-  
+  /// LIC-06 (D-34): o app novo manda `true` e recebe 202. Sem o campo (versões
+  /// instaladas), a resposta é 409 CONFIRMACAO_NECESSARIA.
+  fluxoConfirmacao: z.boolean().optional(),
+
   // Campos extras PF
   rg: z.string().optional(),
   dataNascimento: z.string().optional(),
@@ -116,6 +120,17 @@ const LIMITE_TROCAS_COMPUTADOR = 3
 const JANELA_TROCAS_DIAS       = 30
 
 const MSG_LICENCA_TRANSFERIDA = 'Licença transferida para outro computador.'
+
+// ── Cadastro pelo app (LIC-06) ──────────────────────────────────────────────
+/** Resposta do cadastro para o app novo (202). Igual em qualquer caso (D-31). */
+const MSG_CADASTRO_202 =
+  'Enviamos as instruções para o seu e-mail. Se este e-mail já tiver conta, enviamos as instruções para entrar.'
+/** Resposta do cadastro para as versões instaladas (409, ADR-004). */
+const MSG_CADASTRO_409 =
+  "Enviamos as instruções para o seu e-mail. Depois de confirmar, use a opção 'Já tenho conta' com o seu e-mail e senha."
+const VALIDADE_CONFIRMACAO_MS = 24 * 60 * 60 * 1000   // link de confirmação: 24 h
+const INTERVALO_REENVIO_MS    = 60 * 1000              // no máximo um link por minuto
+const DIAS_TRIAL              = 14
 
 /**
  * Módulos do plano, no formato que `modulosDaLicenca` espera.
@@ -1012,9 +1027,13 @@ export class DispositivoService {
     }
   }
 
-  async autoCadastro(body: unknown) {
-    const dados = this.parseBody(autoCadastroSchema, body)
+  // ── Cadastro ──────────────────────────────────────────────────────────────
 
+  /**
+   * Validações do cadastro que NÃO revelam se alguém é cliente: CPF/CNPJ
+   * válido e domínio de e-mail que existe (400, como sempre).
+   */
+  private async validarCadastro(dados: z.infer<typeof autoCadastroSchema>) {
     // Deduz o tipo pelo tamanho do documento: 11 = CPF (PF), 14 = CNPJ (PJ)
     const isPF = dados.documento.length === 11
 
@@ -1031,23 +1050,17 @@ export class DispositivoService {
     if (!(await dominioDeEmailExiste(dados.email)))
       throw new BadRequestException('O domínio do e-mail informado não existe ou não aceita e-mails. Verifique se digitou corretamente.')
 
-    const { prisma } = require('@startbig/database')
+  }
 
-    // Gera o hash da senha enviada pelo ERP no cadastro. Assim o cliente já sai
-    // do auto-cadastro com senha configurada e consegue usar /erp/auth/login
-    // numa reinstalação futura sem depender do e-mail de primeiro acesso.
-    const senhaHash = await bcrypt.hash(dados.senha, 10)
-
-    // 3. Pegar um usuário ADMIN padrão para ser o "dono" do cliente
-    const admin = await prisma.usuario.findFirst({ where: { tipoUsuario: 'ADMIN' } })
-    if (!admin) throw new BadRequestException('Sistema não configurado para auto-cadastro (Sem administrador master).')
-
-    // 4. Plano da licença trial. Não é só rótulo: o cliente não tem como trocar de
-    // plano sozinho (trocar-plano é rota de admin), então é ESTE plano que define o
-    // Price cobrado quando ele assinar. Ordem: plano fixado por configuração, senão
-    // o mais barato ATIVO. Antes, não havendo plano de preço 0, caía num `findFirst()`
-    // sem filtro nenhum — qualquer plano do catálogo podia ser sorteado, inclusive os
-    // de teste (numa conta com Price de intervalo diário, isso vira cobrança por dia).
+  /**
+   * Plano da licença de teste. Não é só rótulo: o cliente não tem como trocar de
+   * plano sozinho (trocar-plano é rota de admin), então é ESTE plano que define o
+   * Price cobrado quando ele assinar. Ordem: plano fixado por configuração, senão
+   * o mais barato ATIVO. Antes, não havendo plano de preço 0, caía num `findFirst()`
+   * sem filtro nenhum — qualquer plano do catálogo podia ser sorteado, inclusive os
+   * de teste (numa conta com Price de intervalo diário, isso vira cobrança por dia).
+   */
+  private async planoDoTrial(prisma: any) {
     const planoFixado = process.env.PLANO_AUTOCADASTRO_ID?.trim()
 
     let plano = planoFixado
@@ -1066,19 +1079,24 @@ export class DispositivoService {
 
     if (!plano) throw new BadRequestException('Nenhum plano ATIVO cadastrado no sistema para vincular a licença.')
 
-    // 5. Verificar se cliente já existe
-    const existeEmail = await prisma.cliente.findFirst({ where: { email: dados.email } })
-    if (existeEmail) throw new BadRequestException('E-mail já cadastrado no sistema.')
+    return plano
+  }
 
-    if (isPF) {
-      const existeCPF = await prisma.clientePF.findFirst({ where: { cpf: dados.documento } })
-      if (existeCPF) throw new BadRequestException('CPF já cadastrado.')
-    } else {
-      const existeCNPJ = await prisma.clientePJ.findFirst({ where: { cnpj: dados.documento } })
-      if (existeCNPJ) throw new BadRequestException('CNPJ já cadastrado.')
-    }
+  /**
+   * Cria o cliente (PF ou PJ, com endereço quando veio). `extras` são campos a
+   * mais do Cliente, como os do link de confirmação (LIC-06).
+   */
+  private async criarCliente(prisma: any, dados: z.infer<typeof autoCadastroSchema>, extras: Record<string, unknown> = {}) {
+    const isPF = dados.documento.length === 11
 
-    // 6. Criar Cliente
+    // Gera o hash da senha enviada no cadastro: o cliente já sai com senha e
+    // usa o /erp/auth/login, sem depender do e-mail de primeiro acesso.
+    const senhaHash = await bcrypt.hash(dados.senha, 10)
+
+    // Um usuário ADMIN padrão é o "dono" do cliente no painel.
+    const admin = await prisma.usuario.findFirst({ where: { tipoUsuario: 'ADMIN' } })
+    if (!admin) throw new BadRequestException('Sistema não configurado para auto-cadastro (Sem administrador master).')
+
     let clienteId = ''
     
     // Preparar bloco de endereço se houver
@@ -1100,7 +1118,7 @@ export class DispositivoService {
     if (isPF) {
       const c = await prisma.cliente.create({
         data: {
-          email: dados.email, senhaHash, usuarioId: admin.id,
+          email: dados.email, senhaHash, usuarioId: admin.id, ...extras,
           pf: { create: {
             nomeCompleto: dados.nomeOuRazao,
             cpf: dados.documento,
@@ -1114,7 +1132,7 @@ export class DispositivoService {
     } else {
       const c = await prisma.cliente.create({
         data: {
-          email: dados.email, senhaHash, usuarioId: admin.id,
+          email: dados.email, senhaHash, usuarioId: admin.id, ...extras,
           pj: { create: {
             razaoSocial: dados.nomeOuRazao,
             cnpj: dados.documento,
@@ -1133,6 +1151,204 @@ export class DispositivoService {
       })
       clienteId = c.id
     }
+
+    return clienteId
+  }
+
+  /**
+   * Cliente que já usa este CPF (PF) ou CNPJ (PJ), com o e-mail e o nome dele,
+   * ou null.
+   */
+  private async clienteComDocumento(prisma: any, documento: string) {
+    const doc = documento.length === 11
+      ? await prisma.clientePF.findFirst({ where: { cpf: documento } })
+      : await prisma.clientePJ.findFirst({ where: { cnpj: documento } })
+    if (!doc) return null
+    return prisma.cliente.findUnique({ where: { id: doc.clienteId }, include: { pf: true, pj: true } })
+  }
+
+  /** Nome para o "Olá, ..." dos e-mails. */
+  private nomeDoCliente(cliente: { pf?: { nomeCompleto?: string } | null; pj?: { razaoSocial?: string } | null }) {
+    return cliente.pf?.nomeCompleto ?? cliente.pj?.razaoSocial ?? 'cliente'
+  }
+
+  /**
+   * A resposta do cadastro pelo app é SEMPRE a mesma, em qualquer caso
+   * (conta nova, e-mail já cadastrado, documento já cadastrado): assim ela não
+   * revela quem é cliente (ACORDO D-31). A forma depende da versão do app
+   * (D-34, ADR-004):
+   * - app novo (`fluxoConfirmacao: true`): 202;
+   * - versões instaladas (sem o campo): elas tratam todo 2xx como "licença
+   *   criada" e quebrariam lendo a resposta. Recebem um 409 com a instrução,
+   *   que elas sabem mostrar. Nos dois casos a confirmação é exigida.
+   */
+  private respostaDoCadastro(fluxoConfirmacao?: boolean) {
+    if (fluxoConfirmacao) return { statusCode: 202, message: MSG_CADASTRO_202 }
+    throw new ConflictException({ codigo: 'CONFIRMACAO_NECESSARIA', message: MSG_CADASTRO_409 })
+  }
+
+  /**
+   * Cadastro pelo app (/erp/auto-cadastro e /licenca/auto-cadastro), LIC-06.
+   *
+   * Nunca cria licença e nunca devolve a chave. A conta nova nasce SEM
+   * licença e recebe um link de confirmação; o teste de 14 dias só começa
+   * quando o dono clica (D-24). A chave chega ao app pelo login (D-23).
+   */
+  async autoCadastro(body: unknown) {
+    const dados = this.parseBody(autoCadastroSchema, body)
+    await this.validarCadastro(dados)
+
+    const { prisma } = require('@startbig/database')
+
+    // E-mail que já tem conta: nada é criado; só a caixa do dono fica sabendo.
+    const porEmail = await prisma.cliente.findFirst({ where: { email: dados.email }, include: { pf: true, pj: true } })
+    if (porEmail) {
+      await this.enviarLinkPeloEstado(porEmail, 'cadastro-repetido')
+      return this.respostaDoCadastro(dados.fluxoConfirmacao)
+    }
+
+    // CPF/CNPJ que já é de outra conta: aviso a quem pediu, alerta ao titular.
+    const donoDoDocumento = await this.clienteComDocumento(prisma, dados.documento)
+    if (donoDoDocumento) {
+      await this.semDerrubar('aviso de documento já cadastrado', () =>
+        this.emailService.enviarAvisoDocumentoJaCadastrado({ email: dados.email }))
+      await this.semDerrubar('alerta ao titular do documento', () =>
+        this.emailService.enviarAlertaDocumentoUsado({
+          email: donoDoDocumento.email, nomeCliente: this.nomeDoCliente(donoDoDocumento),
+        }))
+      return this.respostaDoCadastro(dados.fluxoConfirmacao)
+    }
+
+    // Conta nova, sem licença. O banco guarda só o HASH do token do link.
+    const { bruto, hash } = novoTokenDeLink()
+    await this.criarCliente(prisma, dados, {
+      tokenConfirmacaoEmail:    hash,
+      tokenConfirmacaoExpiraEm: new Date(Date.now() + VALIDADE_CONFIRMACAO_MS),
+      ultimoEnvioLinkEm:        new Date(),
+    })
+    await this.semDerrubar('confirmação de cadastro', () =>
+      this.emailService.enviarConfirmacaoCadastro({ email: dados.email, nomeCliente: dados.nomeOuRazao, token: bruto }))
+
+    return this.respostaDoCadastro(dados.fluxoConfirmacao)
+  }
+
+  /**
+   * Manda o link que faz sentido para o ESTADO da conta (LIC-06, D-31):
+   * - confirmação pendente: um link de confirmação novo (o anterior deixa de valer);
+   * - qualquer outro: link para criar uma nova senha, mesmo que já exista uma
+   *   (mitigação do R-01). No cadastro repetido, o e-mail explica que a conta
+   *   já existe.
+   *
+   * No máximo um envio por minuto por conta (`ultimoEnvioLinkEm`). Usado pelo
+   * cadastro repetido e pelo POST /erp/auth/reenviar-link.
+   */
+  async enviarLinkPeloEstado(
+    cliente: { id: string; email: string; tokenConfirmacaoEmail?: string | null; ultimoEnvioLinkEm?: Date | null; pf?: any; pj?: any },
+    motivo: 'reenvio' | 'cadastro-repetido',
+  ) {
+    if (cliente.ultimoEnvioLinkEm && Date.now() - new Date(cliente.ultimoEnvioLinkEm).getTime() < INTERVALO_REENVIO_MS)
+      return
+
+    const { prisma } = require('@startbig/database')
+    const nomeCliente = this.nomeDoCliente(cliente)
+
+    if (cliente.tokenConfirmacaoEmail) {
+      const { bruto, hash } = novoTokenDeLink()
+      await prisma.cliente.update({
+        where: { id: cliente.id },
+        data:  {
+          tokenConfirmacaoEmail:    hash,
+          tokenConfirmacaoExpiraEm: new Date(Date.now() + VALIDADE_CONFIRMACAO_MS),
+          ultimoEnvioLinkEm:        new Date(),
+        },
+      })
+      await this.semDerrubar('novo link de confirmação', () =>
+        this.emailService.enviarConfirmacaoCadastro({ email: cliente.email, nomeCliente, token: bruto }))
+      return
+    }
+
+    await prisma.cliente.update({ where: { id: cliente.id }, data: { ultimoEnvioLinkEm: new Date() } })
+    await this.semDerrubar('link de nova senha', () => motivo === 'cadastro-repetido'
+      ? this.emailService.enviarAvisoJaCadastrado({ clienteId: cliente.id, email: cliente.email, nomeCliente })
+      : this.emailService.enviarPrimeiroAcesso({ clienteId: cliente.id, email: cliente.email, nomeCliente }))
+  }
+
+  /**
+   * Link de confirmação do cadastro (GET /erp/auto-cadastro/confirmar).
+   * Confirma o e-mail e cria a licença de teste de 14 dias, contados A PARTIR
+   * DE AGORA (D-24). Não devolve nem envia a chave (D-23): o app a recebe no
+   * login. O servidor da licença é gravado no primeiro login, como já era.
+   */
+  async confirmarCadastro(token: string | undefined) {
+    const { prisma } = require('@startbig/database')
+
+    const cliente = token
+      ? await prisma.cliente.findFirst({ where: { tokenConfirmacaoEmail: hashDoToken(token) } })
+      : null
+    if (!cliente)
+      throw this.erro(HttpStatus.BAD_REQUEST, 'TOKEN_CONFIRMACAO_INVALIDO', 'Este link não é válido.')
+
+    if (!cliente.tokenConfirmacaoExpiraEm || new Date(cliente.tokenConfirmacaoExpiraEm) < new Date())
+      throw this.erro(HttpStatus.GONE, 'TOKEN_CONFIRMACAO_EXPIRADO', 'Este link expirou. Peça um novo link no StartBig.')
+
+    const plano = await this.planoDoTrial(prisma)
+
+    // Apaga o token antes de criar a licença: um segundo clique no mesmo link
+    // cai em "link não é válido", e nunca cria uma segunda licença.
+    const agora = new Date()
+    await prisma.cliente.update({
+      where: { id: cliente.id },
+      data:  { emailConfirmadoEm: agora, tokenConfirmacaoEmail: null, tokenConfirmacaoExpiraEm: null },
+    })
+
+    const vencimento = new Date(agora.getTime() + DIAS_TRIAL * 24 * 60 * 60 * 1000)
+    const licenca = await criarLicenca({ clienteId: cliente.id, planoId: plano.id, nomeDispositivo: 'Auto-Cadastro ERP', dias: DIAS_TRIAL })
+    await updateLicenca(licenca.id, {
+      status: 'ATIVA', isTrial: true, dataVencimento: vencimento, dataAtivacao: agora, ultimaSincronizacao: agora,
+    })
+
+    return { message: 'Conta confirmada. Volte ao StartBig e entre com o seu e-mail e senha.' }
+  }
+
+  /** E-mail que falha não pode mudar a resposta do cadastro (nem revelar nada). */
+  private async semDerrubar(oque: string, enviar: () => Promise<unknown>) {
+    try {
+      await enviar()
+    } catch (err) {
+      this.logger.warn(`[email] falha ao enviar ${oque}: ${err instanceof Error ? err.message : err}`)
+    }
+  }
+
+  /**
+   * Cria conta + licença de teste NA HORA, como o cadastro funcionava antes da
+   * LIC-06. Usado SÓ pela contratação paga do site (erp-contratacao.service),
+   * que precisa do licencaId para abrir o checkout do Stripe. Decisão do
+   * usuário (2026-11-19): o site fica como estava; o cadastro pelo app segue a
+   * confirmação de e-mail. Registrado no ACORDO §7 para avaliar depois.
+   */
+  async criarContaComTrial(body: unknown) {
+    const dados = this.parseBody(autoCadastroSchema, body)
+
+    await this.validarCadastro(dados)
+
+    const { prisma } = require('@startbig/database')
+    const isPF  = dados.documento.length === 11
+    const plano = await this.planoDoTrial(prisma)
+
+    // No site, a existência do e-mail já é exposta pelo /identificar (tradeoff
+    // de conversão aceito lá); as mensagens continuam as de antes.
+    const existeEmail = await prisma.cliente.findFirst({ where: { email: dados.email } })
+    if (existeEmail) throw new BadRequestException('E-mail já cadastrado no sistema.')
+
+    if (isPF) {
+      const existeCPF = await prisma.clientePF.findFirst({ where: { cpf: dados.documento } })
+      if (existeCPF) throw new BadRequestException('CPF já cadastrado.')
+    } else {
+      const existeCNPJ = await prisma.clientePJ.findFirst({ where: { cnpj: dados.documento } })
+      if (existeCNPJ) throw new BadRequestException('CNPJ já cadastrado.')
+    }
+
+    const clienteId = await this.criarCliente(prisma, dados)
 
     // 7. Criar Licença
     const agora = new Date()

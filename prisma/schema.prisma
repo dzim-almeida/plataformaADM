@@ -192,6 +192,24 @@ model Cliente {
   emailPendente      String?
   tokenEmail         String?
   tokenEmailExpiraEm DateTime?
+
+  // ── LIC-06 (conta e cadastro). Todos opcionais ou com padrão: o `db push`
+  // só acrescenta colunas, sem preencher dados (ACORDO D-32). ──
+  /// Quando o dono confirmou o e-mail do cadastro (registro).
+  emailConfirmadoEm        DateTime?
+  /// Senhas erradas seguidas no login do ERP (zera no acerto).
+  falhasLogin              Int       @default(0)
+  /// Até quando o login fica bloqueado depois de muitas falhas (1, 5, 15 min).
+  bloqueadoAte             DateTime?
+  /// HASH (sha256) do token do link de confirmação do cadastro. Nunca o token.
+  tokenConfirmacaoEmail    String?
+  tokenConfirmacaoExpiraEm DateTime?
+  /// HASH (sha256) do token do link de primeiro acesso / nova senha.
+  /// O `tokenEmail` acima fica só para a troca de e-mail (D-35).
+  tokenSenha               String?
+  tokenSenhaExpiraEm       DateTime?
+  /// Último envio de link por e-mail: limita o reenvio a um por minuto.
+  ultimoEnvioLinkEm        DateTime?
   /// Id deste cliente dentro do Asaas, criado na primeira cobranca PIX e
   /// reaproveitado nas seguintes. Sem guardar, cada PIX criaria um cadastro novo
   /// la e o historico do cliente ficaria espalhado em N clientes soltos.

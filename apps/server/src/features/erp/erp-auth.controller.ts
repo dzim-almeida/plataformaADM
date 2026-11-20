@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common'
+import { Controller, Post, Body, HttpCode } from '@nestjs/common'
 import { ErpAuthService } from './erp-auth.service'
 import { Public } from '../../core/decorators/public.decorator'
 
@@ -10,6 +10,14 @@ export class ErpAuthController {
   @Post('login')
   login(@Body() body: unknown) {
     return this.erpAuthService.login(body)
+  }
+
+  // Um botão só no app: a API escolhe o link pelo estado da conta (LIC-06).
+  // Sempre 202, com a mesma mensagem, exista ou não o e-mail.
+  @Post('reenviar-link')
+  @HttpCode(202)
+  reenviarLink(@Body() body: unknown) {
+    return this.erpAuthService.reenviarLink(body)
   }
 
   @Post('primeiro-acesso')

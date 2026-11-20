@@ -3,6 +3,20 @@ import { randomUUID } from 'crypto'
 import { ZodError, z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { DispositivoService } from '../dispositivos/dispositivo.service'
+import { hashDoToken } from '../../core/seguranca/token-de-link'
+
+/**
+ * Bloqueio progressivo do login por e-mail (LIC-06, ACORDO D-09): a partir da
+ * 5ª senha errada seguida, espera de 1, 5 e depois 15 minutos (o teto). O teto
+ * curto protege a conta sem trancar o dono por muito tempo.
+ */
+const FALHAS_ANTES_DO_BLOQUEIO = 5
+const ESPERAS_MIN = [1, 5, 15]
+const minutosAFrente = (min: number) => new Date(Date.now() + min * 60 * 1000)
+
+const reenviarLinkSchema = z.object({
+  email: z.string().email('E-mail inválido.'),
+})
 
 const loginSchema = z.object({
   email: z.string().email('E-mail inválido.'),
@@ -63,19 +77,36 @@ export class ErpAuthService {
       },
     })
 
-    if (!cliente)
-      throw this.erro(HttpStatus.UNAUTHORIZED, 'CREDENCIAIS_INVALIDAS', 'E-mail ou senha incorretos.')
+    // E-mail que não existe: mesma resposta da senha errada (F12), e nada é
+    // gravado (não há conta onde contar a falha).
+    if (!cliente) throw this.credenciaisInvalidas()
 
-    if (!cliente.senhaHash)
+    // Bloqueado por muitas tentativas (D-09). Conferido ANTES da senha: durante
+    // o bloqueio, nem a senha certa entra.
+    if (cliente.bloqueadoAte && new Date(cliente.bloqueadoAte) > new Date())
+      throw this.erro(HttpStatus.TOO_MANY_REQUESTS, 'MUITAS_TENTATIVAS', 'Muitas tentativas. Tente de novo em alguns minutos.')
+
+    // Conta sem senha cai no MESMO erro de senha errada (F12). Antes ela
+    // respondia SENHA_NAO_CONFIGURADA, que revelava que o e-mail é cliente.
+    const senhaValida = !!cliente.senhaHash && await bcrypt.compare(dados.senha, cliente.senhaHash)
+    if (!senhaValida) {
+      await this.registrarFalha(cliente)
+      throw this.credenciaisInvalidas()
+    }
+
+    if (cliente.falhasLogin || cliente.bloqueadoAte)
+      await this.prisma.cliente.update({ where: { id: cliente.id }, data: { falhasLogin: 0, bloqueadoAte: null } })
+
+    // Conta SEM NENHUMA licença e com confirmação pendente (D-32). Conta com
+    // licença nunca cai aqui, mesmo sem `emailConfirmadoEm`: os clientes de
+    // hoje não precisam de nenhum preenchimento.
+    const temAlgumaLicenca = await this.prisma.licenca.count({ where: { clienteId: cliente.id } }) > 0
+    if (!temAlgumaLicenca && cliente.tokenConfirmacaoEmail)
       throw this.erro(
-        HttpStatus.BAD_REQUEST,
-        'SENHA_NAO_CONFIGURADA',
-        'Senha não configurada. Verifique seu e-mail para criar sua senha de acesso.',
+        HttpStatus.FORBIDDEN,
+        'AGUARDANDO_CONFIRMACAO_EMAIL',
+        'Confirme o link enviado ao seu e-mail antes de entrar.',
       )
-
-    const senhaValida = await bcrypt.compare(dados.senha, cliente.senhaHash)
-    if (!senhaValida)
-      throw this.erro(HttpStatus.UNAUTHORIZED, 'CREDENCIAIS_INVALIDAS', 'E-mail ou senha incorretos.')
 
     // A mesma regra do conectar: ATIVA dentro do prazo, ou qualquer uma com
     // carência vigente. Checada aqui para responder 402 com código, em vez do
@@ -117,18 +148,26 @@ export class ErpAuthService {
     return { ...resultado, chaveAtivacao: licenca.chaveAtivacao }
   }
 
+  /**
+   * Define a senha pelo link do e-mail (primeiro acesso ou nova senha).
+   *
+   * Procura SÓ pelo hash em `tokenSenha` (LIC-06, D-35), nunca em `tokenEmail`:
+   * assim um token de troca de e-mail não define senha, e pedir um link de
+   * senha não apaga uma troca de e-mail pendente. A senha antiga, se havia,
+   * deixa de valer (mitigação do R-01).
+   */
   async primeiroAcesso(body: unknown) {
     const dados = this.parseBody(primeiroAcessoSchema, body)
 
     const cliente = await this.prisma.cliente.findFirst({
-      where: { tokenEmail: dados.token },
+      where: { tokenSenha: hashDoToken(dados.token) },
     })
 
     if (!cliente)
       throw new BadRequestException('Link inválido.')
 
-    if (new Date() > new Date(cliente.tokenEmailExpiraEm))
-      throw new BadRequestException('Link expirado. Entre em contato com o suporte para receber um novo.')
+    if (!cliente.tokenSenhaExpiraEm || new Date() > new Date(cliente.tokenSenhaExpiraEm))
+      throw new BadRequestException('Link expirado. Peça um novo link no StartBig.')
 
     const senhaHash = await bcrypt.hash(dados.novaSenha, 10)
 
@@ -136,11 +175,52 @@ export class ErpAuthService {
       where: { id: cliente.id },
       data:  {
         senhaHash,
-        tokenEmail:         null,
-        tokenEmailExpiraEm: null,
+        tokenSenha:         null,
+        tokenSenhaExpiraEm: null,
+        // Quem definiu a senha pelo link provou ter o e-mail: o bloqueio sai.
+        falhasLogin:        0,
+        bloqueadoAte:       null,
       },
     })
 
     return { mensagem: 'Senha criada com sucesso. Você já pode fazer login no sistema.' }
+  }
+
+  /**
+   * "Reenviar link" do app (POST /erp/auth/reenviar-link, LIC-06).
+   *
+   * Responde SEMPRE 202 com a mesma mensagem, exista ou não o e-mail (D-31).
+   * Quem escolhe o link é o estado da conta (confirmação pendente ou nova
+   * senha); no máximo um envio por minuto (ver enviarLinkPeloEstado).
+   */
+  async reenviarLink(body: unknown) {
+    const { email } = this.parseBody(reenviarLinkSchema, body)
+    const resposta  = { statusCode: 202, message: 'Se este e-mail tiver conta, enviamos um link.' }
+
+    const cliente = await this.prisma.cliente.findFirst({ where: { email }, include: { pf: true, pj: true } })
+    if (cliente) await this.dispositivoService.enviarLinkPeloEstado(cliente, 'reenvio')
+
+    return resposta
+  }
+
+  /** 401 genérico: não diz se o e-mail existe ou se a senha é que está errada (F12). */
+  private credenciaisInvalidas(): HttpException {
+    return this.erro(HttpStatus.UNAUTHORIZED, 'CREDENCIAIS_INVALIDAS', 'E-mail ou senha incorretos.')
+  }
+
+  /**
+   * Conta mais uma senha errada e, da 5ª em diante, bloqueia o login: 1 min
+   * na 5ª, 5 min na 6ª, 15 min da 7ª em diante (D-09).
+   */
+  private async registrarFalha(cliente: { id: string; falhasLogin?: number | null }) {
+    const falhas = (cliente.falhasLogin ?? 0) + 1
+    const nivel  = Math.min(falhas - FALHAS_ANTES_DO_BLOQUEIO, ESPERAS_MIN.length - 1)
+    await this.prisma.cliente.update({
+      where: { id: cliente.id },
+      data:  {
+        falhasLogin:  falhas,
+        bloqueadoAte: falhas >= FALHAS_ANTES_DO_BLOQUEIO ? minutosAFrente(ESPERAS_MIN[nivel]) : null,
+      },
+    })
   }
 }

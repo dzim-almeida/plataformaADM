@@ -174,7 +174,10 @@ export class ErpContratacaoService {
 
     // 1. Cria cliente + licença (trial de 14 dias). Os dias do trial não se
     //    perdem: a renovação soma o período pago por cima do que ainda resta.
-    const cadastro = await this.dispositivoService.autoCadastro({
+    //    `criarContaComTrial` é o cadastro de antes da LIC-06: o site precisa
+    //    da licença na hora para o checkout. O cadastro pelo app passou a
+    //    exigir a confirmação do e-mail (decisão do usuário, 2026-11-19).
+    const cadastro = await this.dispositivoService.criarContaComTrial({
       documento:   dados.documento,
       nomeOuRazao: dados.nomeOuRazao,
       email:       dados.email,

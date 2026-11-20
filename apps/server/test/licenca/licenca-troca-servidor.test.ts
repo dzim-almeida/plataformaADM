@@ -316,12 +316,14 @@ describe('/erp/auth/login — códigos de erro e licença vencida', () => {
     await assert.rejects(auth.login({ email: EMAIL, senha: 'errada' }), recusa(401, 'CREDENCIAIS_INVALIDAS'))
   })
 
-  it('senha nunca criada: 400 SENHA_NAO_CONFIGURADA', async () => {
+  // LIC-06 (F12): a conta sem senha responde igual à senha errada, para não
+  // revelar que o e-mail é cliente. Antes era 400 SENHA_NAO_CONFIGURADA.
+  it('senha nunca criada: 401 CREDENCIAIS_INVALIDAS, como a senha errada', async () => {
     cadastrar()
     tabelas.cliente[0].senhaHash = null
     const { login } = montar()
 
-    await assert.rejects(login(NOTEBOOK), recusa(400, 'SENHA_NAO_CONFIGURADA'))
+    await assert.rejects(login(NOTEBOOK), recusa(401, 'CREDENCIAIS_INVALIDAS'))
   })
 
   it('sem licença: 400 SEM_LICENCA_ATIVA', async () => {

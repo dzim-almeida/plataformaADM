@@ -17,6 +17,7 @@ const ROTAS_PUBLICAS = [
   '/pagamento',        // retorno do Stripe: /pagamento/sucesso e /cancelado
   '/primeiro-acesso',  // link de criar senha enviado por e-mail
   '/confirmar-email',  // link de confirmação enviado por e-mail
+  '/confirmar-cadastro', // link de confirmação do cadastro pelo app (LIC-06)
   '/debug',
 ]
 

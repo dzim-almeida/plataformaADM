@@ -14,7 +14,7 @@
  * - Respostas HTTP formatadas para o cliente.
  * ============================================================================
  */
-import { Controller, Post, Patch, Get, Delete, Param, Body, Query, Req, UseGuards } from '@nestjs/common'
+import { Controller, Post, Patch, Get, Delete, Param, Body, Query, Req, UseGuards, HttpCode } from '@nestjs/common'
 import { DispositivoService } from './dispositivo.service'
 import { Public } from '../../core/decorators/public.decorator'
 import { ErpLicencaGuardOpcional } from '../../core/guards/erp-licenca.guard'
@@ -74,8 +74,11 @@ export class DispositivoController {
     return this.dispositivoService.deletarLicenca(id)
   }
 
+  // Gêmea de POST /erp/auto-cadastro (LIC-06): 202 para o app novo; as
+  // versões instaladas recebem 409 CONFIRMACAO_NECESSARIA (exceção do serviço).
   @Public()
   @Post('auto-cadastro')
+  @HttpCode(202)
   async autoCadastro(@Body() body: unknown) {
     return this.dispositivoService.autoCadastro(body)
   }

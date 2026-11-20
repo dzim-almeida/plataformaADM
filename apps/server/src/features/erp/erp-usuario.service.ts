@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, ConflictException } from '@nestjs/common'
+import { Injectable, BadRequestException, ConflictException, HttpException, HttpStatus } from '@nestjs/common'
 import { randomUUID } from 'crypto'
 import { ZodError, z } from 'zod'
 import bcrypt from 'bcryptjs'
@@ -15,6 +15,35 @@ const solicitarEmailSchema = z.object({
   novoEmail:  z.string().email('E-mail inválido.'),
   senhaAtual: z.string(),
 })
+
+/**
+ * Corpo do PUT /erp/usuario/titular (LIC-06, D-22): os campos do GET, SEM
+ * `tipoPessoa` e SEM `documento`. `.strict()` recusa (400) qualquer campo a
+ * mais — inclusive `tipoPessoa`, que não muda por aqui.
+ */
+const atualizarTitularSchema = z.object({
+  nomeOuRazao:  z.string().trim().min(2, 'Informe o nome ou a razão social.').optional(),
+  nomeFantasia: z.string().trim().max(150).nullable().optional(),
+  telefone:     z.string().trim().max(20).nullable().optional(),
+  celular:      z.string().trim().max(20).nullable().optional(),
+  endereco: z.object({
+    cep:         z.string().trim().min(8, 'CEP inválido.'),
+    logradouro:  z.string().trim().min(1, 'Informe o logradouro.'),
+    numero:      z.string().trim().min(1, 'Informe o número.'),
+    complemento: z.string().trim().nullable().optional(),
+    bairro:      z.string().trim().min(1, 'Informe o bairro.'),
+    cidade:      z.string().trim().min(1, 'Informe a cidade.'),
+    estado:      z.string().trim().length(2, 'Use a sigla do estado (ex.: CE).'),
+  }).optional(),
+}).strict()
+
+/** CPF 000.000.000-00 e CNPJ 00.000.000/0000-00, como o setup do app mostra. */
+function formatarDocumento(doc: string): string {
+  const d = (doc ?? '').replace(/\D/g, '')
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
+  return doc
+}
 
 @Injectable()
 export class ErpUsuarioService {
@@ -153,4 +182,84 @@ export class ErpUsuarioService {
 
     return { mensagem: 'E-mail confirmado com sucesso.' }
   }
+
+  // ── Titular da licença (LIC-06, D-22, D-28) ──────────────────────────────
+  // Usado pelo setup do app (SPEC-03) para pré-preencher e atualizar os dados
+  // da empresa. O documento (CPF/CNPJ) é só leitura por este caminho.
+
+  /** Cliente dono da licença do token, com PF/PJ e endereços. */
+  private async clienteDaLicenca(licencaId: string) {
+    const licenca = await this.prisma.licenca.findUnique({ where: { id: licencaId } })
+    if (!licenca) throw new BadRequestException('Licença não encontrada.')
+    const cliente = await this.prisma.cliente.findUnique({
+      where:   { id: licenca.clienteId },
+      include: { pf: true, pj: true, enderecos: true },
+    })
+    if (!cliente) throw new BadRequestException('Titular da licença não encontrado.')
+    return cliente
+  }
+
+  /** GET /erp/usuario/titular: os dados da empresa do titular. */
+  async lerTitular(licencaId: string) {
+    const cliente = await this.clienteDaLicenca(licencaId)
+    const { pf, pj } = cliente
+    // O endereço principal; sem ele, o primeiro que houver.
+    const endereco = cliente.enderecos?.find((e: any) => e.tipo === 'PRINCIPAL') ?? cliente.enderecos?.[0] ?? null
+
+    return {
+      tipoPessoa:   pj ? 'PJ' : 'PF',
+      nomeOuRazao:  pj?.razaoSocial ?? pf?.nomeCompleto ?? '',
+      documento:    formatarDocumento(pj?.cnpj ?? pf?.cpf ?? ''),
+      nomeFantasia: pj?.nomeFantasia ?? null,
+      telefone:     pj?.telefone ?? null,
+      celular:      pj?.celular ?? null,
+      endereco: endereco
+        ? {
+            cep: endereco.cep, logradouro: endereco.logradouro, numero: endereco.numero,
+            complemento: endereco.complemento ?? null, bairro: endereco.bairro,
+            cidade: endereco.cidade, estado: endereco.estado,
+          }
+        : null,
+    }
+  }
+
+  /**
+   * PUT /erp/usuario/titular: atualiza os dados da empresa, ANTES de o setup
+   * do app criar a empresa local (D-22).
+   * - `documento` no corpo: 403 DOCUMENTO_TRAVADO (nunca muda por aqui).
+   * - PJ: razão social, nome fantasia e telefones em `pj`.
+   * - PF: o nome vai para `pf.nomeCompleto` (a PF não tem fantasia nem
+   *   telefone no cadastro da nuvem; esses campos são ignorados).
+   * - Sem endereço na nuvem: cria um principal.
+   */
+  async atualizarTitular(licencaId: string, body: unknown) {
+    if (body && typeof body === 'object' && 'documento' in body)
+      throw new HttpException(
+        { codigo: 'DOCUMENTO_TRAVADO', message: 'O documento do titular não pode ser alterado pelo app. Fale com o suporte.' },
+        HttpStatus.FORBIDDEN,
+      )
+
+    const dados   = this.parseBody(atualizarTitularSchema, body)   // Zod: 400 com detalhes
+    const cliente = await this.clienteDaLicenca(licencaId)
+
+    if (cliente.pj) {
+      const campos: Record<string, unknown> = {}
+      if (dados.nomeOuRazao !== undefined)  campos.razaoSocial  = dados.nomeOuRazao
+      if (dados.nomeFantasia !== undefined) campos.nomeFantasia = dados.nomeFantasia
+      if (dados.telefone !== undefined)     campos.telefone     = dados.telefone
+      if (dados.celular !== undefined)      campos.celular      = dados.celular
+      if (Object.keys(campos).length) await this.prisma.clientePJ.update({ where: { clienteId: cliente.id }, data: campos })
+    } else if (cliente.pf && dados.nomeOuRazao !== undefined) {
+      await this.prisma.clientePF.update({ where: { clienteId: cliente.id }, data: { nomeCompleto: dados.nomeOuRazao } })
+    }
+
+    if (dados.endereco) {
+      const atual = cliente.enderecos?.find((e: any) => e.tipo === 'PRINCIPAL') ?? cliente.enderecos?.[0]
+      if (atual) await this.prisma.endereco.update({ where: { id: atual.id }, data: dados.endereco })
+      else await this.prisma.endereco.create({ data: { clienteId: cliente.id, tipo: 'PRINCIPAL', ...dados.endereco } })
+    }
+
+    return this.lerTitular(licencaId)
+  }
+
 }

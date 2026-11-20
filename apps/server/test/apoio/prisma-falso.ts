@@ -31,6 +31,12 @@ export const tabelas = {
   avisoFiscal:         [] as Linha[],
   municipioNfse:       [] as Linha[],
   backup:              [] as Linha[],
+  // LIC-06: cadastro, login e titular
+  usuario:             [] as Linha[],
+  plano:               [] as Linha[],
+  clientePF:           [] as Linha[],
+  clientePJ:           [] as Linha[],
+  endereco:            [] as Linha[],
 }
 
 export function reiniciarBanco() {
@@ -95,6 +101,18 @@ const chaveConsumo = (w: Linha) =>
 const porLicencaHwid = (w: Linha) =>
   (l: Linha) => l.licencaId === w.licencaId_hwid.licencaId && l.hwid === w.licencaId_hwid.hwid
 
+/**
+ * Junta ao cliente o que o `include` pediu (LIC-06): `pf`, `pj` e `enderecos`
+ * moram em tabelas próprias, como no banco de verdade.
+ */
+function comInclude(cliente: Linha, include?: Linha): Linha {
+  const resultado: Linha = { ...cliente }
+  if (include?.pf)        resultado.pf = copia(tabelas.clientePF.find(p => p.clienteId === cliente.id))
+  if (include?.pj)        resultado.pj = copia(tabelas.clientePJ.find(p => p.clienteId === cliente.id))
+  if (include?.enderecos) resultado.enderecos = tabelas.endereco.filter(e => e.clienteId === cliente.id).map(copia)
+  return resultado
+}
+
 /** `deleteMany` com `where` simples; devolve `{ count }` como o Prisma. */
 function apagar(tabela: Linha[], where: Linha) {
   const antes = tabela.length
@@ -137,6 +155,14 @@ export const prismaFalso = {
      * "simultâneas" com `hwidServidor: null` resultam em uma gravação só: esta
      * função não tem `await` no meio, então a segunda já vê o campo preenchido.
      */
+    /** LIC-06: a licença de teste nasce na confirmação do cadastro. */
+    create: async ({ data }: Linha) => {
+      const linha = { id: novoId('licenca'), criadoEm: new Date(), ...data }
+      tabelas.licenca.push(linha)
+      return copia(linha)
+    },
+    count: async ({ where }: Linha) =>
+      tabelas.licenca.filter(l => casa(l, where)).length,
     updateMany: async ({ where, data }: Linha) => {
       const linhas = tabelas.licenca.filter(l => casa(l, where))
       linhas.forEach(l => aplicarDados(l, data))
@@ -178,13 +204,87 @@ export const prismaFalso = {
   cliente: {
     findMany: async ({ where }: Linha) =>
       tabelas.cliente.filter(c => casa(c, where)).map(copia),
+    findUnique: async ({ where, include }: Linha) => {
+      const cliente = tabelas.cliente.find(c => c.id === where.id)
+      return cliente ? comInclude(cliente, include) : null
+    },
+    /**
+     * LIC-06: o cadastro cria o cliente com `pf`/`pj` e `enderecos` aninhados
+     * (`{ create: ... }`); aqui cada um vai para a tabela dele.
+     */
+    create: async ({ data }: Linha) => {
+      const { pf, pj, enderecos, ...campos } = data
+      const linha = {
+        id: novoId('cliente'), senhaHash: null, falhasLogin: 0, bloqueadoAte: null,
+        emailConfirmadoEm: null, tokenConfirmacaoEmail: null, tokenConfirmacaoExpiraEm: null,
+        tokenSenha: null, tokenSenhaExpiraEm: null, ultimoEnvioLinkEm: null,
+        tokenEmail: null, tokenEmailExpiraEm: null, emailPendente: null, ...campos,
+      }
+      tabelas.cliente.push(linha)
+      if (pf?.create) tabelas.clientePF.push({ id: novoId('pf'), clienteId: linha.id, ...pf.create })
+      if (pj?.create) tabelas.clientePJ.push({ id: novoId('pj'), clienteId: linha.id, ...pj.create })
+      if (enderecos?.create) tabelas.endereco.push({ id: novoId('end'), clienteId: linha.id, ...enderecos.create })
+      return copia(linha)
+    },
+    update: async ({ where, data }: Linha) => {
+      const linha = tabelas.cliente.find(c => c.id === where.id)
+      if (!linha) throw new Error(`cliente ${where.id} não existe`)
+      aplicarDados(linha, data)
+      return copia(linha)
+    },
     findFirst: async ({ where, include }: Linha) => {
       const cliente = tabelas.cliente.find(c => casa(c, where))
       if (!cliente) return null
-      if (!include?.dispositivos) return copia(cliente)
+      if (!include?.dispositivos) return comInclude(cliente, include)
       const d = include.dispositivos
       const dispositivos = ordenar(tabelas.licenca.filter(l => l.clienteId === cliente.id && casa(l, d.where)), d.orderBy)
       return { ...cliente, dispositivos: dispositivos.map(copia) }
+    },
+  },
+
+  usuario: {
+    findFirst: async ({ where }: Linha) =>
+      copia(tabelas.usuario.find(u => casa(u, where))),
+  },
+
+  plano: {
+    findFirst: async ({ where, orderBy }: Linha) =>
+      copia(ordenar(tabelas.plano.filter(p => casa(p, where)), Array.isArray(orderBy) ? orderBy[0] : orderBy)[0]),
+  },
+
+  /** PF e PJ: uma linha por cliente (`clienteId` é único no schema). */
+  clientePF: {
+    findFirst: async ({ where }: Linha) => copia(tabelas.clientePF.find(p => casa(p, where))),
+    update: async ({ where, data }: Linha) => {
+      const linha = tabelas.clientePF.find(p => p.clienteId === where.clienteId)
+      if (!linha) throw new Error(`clientePF ${where.clienteId} não existe`)
+      aplicarDados(linha, data)
+      return copia(linha)
+    },
+  },
+  clientePJ: {
+    findFirst: async ({ where }: Linha) => copia(tabelas.clientePJ.find(p => casa(p, where))),
+    update: async ({ where, data }: Linha) => {
+      const linha = tabelas.clientePJ.find(p => p.clienteId === where.clienteId)
+      if (!linha) throw new Error(`clientePJ ${where.clienteId} não existe`)
+      aplicarDados(linha, data)
+      return copia(linha)
+    },
+  },
+
+  endereco: {
+    findFirst: async ({ where, orderBy }: Linha) =>
+      copia(ordenar(tabelas.endereco.filter(e => casa(e, where)), orderBy)[0]),
+    create: async ({ data }: Linha) => {
+      const linha = { id: novoId('end'), tipo: 'PRINCIPAL', criadoEm: new Date(), complemento: null, ...data }
+      tabelas.endereco.push(linha)
+      return copia(linha)
+    },
+    update: async ({ where, data }: Linha) => {
+      const linha = tabelas.endereco.find(e => e.id === where.id)
+      if (!linha) throw new Error(`endereco ${where.id} não existe`)
+      aplicarDados(linha, data)
+      return copia(linha)
     },
   },
 
