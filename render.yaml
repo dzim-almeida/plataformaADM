@@ -1,0 +1,112 @@
+# ============================================================================
+# NOME DO ARQUIVO: render.yaml
+# MÓDULO: Homologação (Render)
+# ============================================================================
+# O QUE ESTE ARQUIVO FAZ:
+# "Blueprint" do Render: descreve, num arquivo só, o ambiente de HOMOLOGAÇÃO
+# da plataforma (API + painel web + banco), separado da produção.
+#
+# - Mora SÓ na branch `homologacao-render` do fork, para não entrar no PR que
+#   vai para a produção (aalan-big). O Render faz deploy desta branch.
+# - Nada aqui aponta para a produção: banco próprio, chaves RSA próprias,
+#   Stripe/Asaas em modo de teste. NUNCA cole aqui um segredo da produção.
+# - Os valores marcados com `sync: false` não ficam no arquivo: o Render pede
+#   cada um na tela, na primeira vez que o Blueprint é aplicado.
+#
+# Passo a passo completo: docs/homologacao-render.md
+# ============================================================================
+
+databases:
+  # Postgres só de homologação. Começa vazio; o `db push` do build cria as
+  # tabelas e o seed cria o admin e os planos (ver o passo a passo).
+  - name: startbig-hml-db
+    databaseName: startbig_hml
+    user: startbig_hml
+    plan: basic-256mb
+
+services:
+  # ── API (NestJS) ──────────────────────────────────────────────────────────
+  - type: web
+    name: startbig-hml-api
+    runtime: node
+    # Plano pago mais barato DE PROPÓSITO: o gratuito "dorme" sem uso e leva
+    # ~50 s para acordar, e o app da loja espera só 3 s no /licenca/conectar
+    # (cai no modo offline e parece bug).
+    plan: starter
+    branch: homologacao-render
+    autoDeploy: true
+    # --include=dev: o build precisa do TypeScript e do Prisma, e o start usa
+    # o ts-node; todos são devDependencies (com NODE_ENV=production o npm os
+    # pularia). O `postinstall` da raiz roda o `prisma generate`.
+    # O `db push` aplica o schema no banco DE HOMOLOGAÇÃO. Sem
+    # `--accept-data-loss`: se um dia o push quiser apagar algo, o build para.
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/server && npx prisma db push
+    # Igual ao PM2 da VPS (ecosystem.config.js): `npm run start` do server.
+    startCommand: npm run start --workspace=apps/server
+    # Rota pública e leve, que só responde com a API de pé.
+    healthCheckPath: /licenca/chave-publica
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Liga as travas de produção (JWT obrigatório, CORS restrito), como na VPS.
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: startbig-hml-db
+          property: connectionString
+      # Segredo do login do painel: o Render gera um valor aleatório.
+      - key: JWT_SECRET
+        generateValue: true
+      # Chave dos segredos fiscais guardados no banco: própria da homologação.
+      - key: FISCAL_TOKENS_KEY
+        generateValue: true
+      # Par RSA SÓ DE TESTE, em base64 (gere com o comando do passo a passo).
+      # Sem ele a API gera um par novo a cada reinício e os tokens dos apps de
+      # teste passam a ser recusados depois de cada deploy.
+      - key: LICENCA_PRIVATE_KEY
+        sync: false
+      - key: LICENCA_PUBLIC_KEY
+        sync: false
+      # Obrigatórias no boot (core/config/secrets.ts). Chaves de TESTE do Stripe.
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # E-mails (link de confirmação, nova senha). Teste só com e-mails seus.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # Endereço do painel de homologação: monta os links dos e-mails
+      # (/confirmar-cadastro, /primeiro-acesso). Preencha depois do 1º deploy.
+      - key: APP_URL
+        sync: false
+      # Origens que o navegador pode usar para chamar a API (o painel).
+      - key: CORS_ORIGINS
+        sync: false
+      # Para onde vão os alertas operacionais (opcional).
+      - key: ADMIN_ALERT_EMAIL
+        sync: false
+
+  # ── Painel web (Next.js) ──────────────────────────────────────────────────
+  # Opcional para os testes da licença: só a página /confirmar-cadastro depende
+  # dele. Dá para confirmar o cadastro chamando a API direto (passo a passo).
+  - type: web
+    name: startbig-hml-web
+    runtime: node
+    plan: starter
+    branch: homologacao-render
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run build --workspace=apps/web
+    # O `next start` usa a porta que o Render passa em PORT.
+    startCommand: npm run start --workspace=apps/web
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Endereço da API de homologação. Entra no BUILD do Next.js (NEXT_PUBLIC_):
+      # mudou o valor, refaça o deploy do painel.
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
