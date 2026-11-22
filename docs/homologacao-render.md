@@ -38,7 +38,9 @@ node -e "const {generateKeyPairSync}=require('crypto');const k=generateKeyPairSy
 
 Guarde as duas linhas num gerenciador de senhas. Não cole em chat, issue nem commit.
 
-## 4. Criar o ambiente pelo Blueprint
+## 4. Criar o ambiente pelo Blueprint (planos pagos)
+
+> **Plano gratuito:** o Render não aplica o Blueprint. Pule para o passo 4b.
 
 1. No Render: **New › Blueprint**.
 2. Escolha o repositório `dzim-almeida/plataformaADM` e a branch **`homologacao-render`**. O Render lê o `render.yaml` e mostra o banco e os dois serviços.
@@ -58,6 +60,50 @@ Guarde as duas linhas num gerenciador de senhas. Não cole em chat, issue nem co
 
 `JWT_SECRET` e `FISCAL_TOKENS_KEY` o Render gera sozinho. O backup em nuvem (`BACKUP_S3_*`) fica de fora: sem ele, a API responde que o armazenamento não está configurado. Se quiser testar backup, crie um bucket **de teste** no R2 e acrescente as variáveis `BACKUP_S3_*` no serviço da API.
 
+## 4b. Plano gratuito: criar à mão (sem Blueprint)
+
+No plano gratuito o Render não aplica o Blueprint. Crie as peças pelo painel, com as mesmas configurações do `render.yaml` (que continua servindo de referência). Três diferenças do gratuito:
+
+- **Não há aba Shell** no serviço: o seed roda do seu computador (passo 6b).
+- **O serviço "dorme"** depois de ~15 minutos sem uso e leva ~50 segundos para acordar. O app espera só 3 segundos e cai no modo offline. Antes de cada rodada de testes, **acorde a API** abrindo `https://<api>/licenca/chave-publica` no navegador e esperando a resposta.
+- **O Postgres gratuito expira em 30 dias.** Serve para uma rodada de testes.
+
+**1. Banco:** **New › Postgres**
+- Name: `startbig-hml-db` · Database: `startbig_hml` · User: `startbig_hml` · Plan: **Free**.
+- Depois de criado, copie da página dele a **Internal Database URL** (usada pela API) e a **External Database URL** (usada no seed, passo 6b).
+
+**2. API:** **New › Web Service** › repositório `dzim-almeida/plataformaADM`
+- Name: `startbig-hml-api` · Branch: **`homologacao-render`** · Root Directory: vazio (a raiz do repositório) · Runtime: **Node** · Plan: **Free**.
+- Build Command:
+  ```bash
+  npm ci --include=dev && npm run build --workspace=apps/server && npx prisma db push
+  ```
+- Start Command:
+  ```bash
+  npm run start --workspace=apps/server
+  ```
+- Em **Advanced**: Health Check Path `/licenca/chave-publica`.
+- **Environment Variables** (botão "Add Environment Variable"):
+
+  | Variável | Valor |
+  |----------|-------|
+  | `NODE_VERSION` | `22` |
+  | `NODE_ENV` | `production` |
+  | `DATABASE_URL` | A **Internal Database URL** do banco |
+  | `JWT_SECRET` | Um valor aleatório (botão "Generate" do Render) |
+  | `FISCAL_TOKENS_KEY` | Um valor aleatório (botão "Generate") |
+  | `LICENCA_PRIVATE_KEY`, `LICENCA_PUBLIC_KEY` | As duas linhas do passo 3 (só o que vem depois do `=`) |
+  | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Chaves de **teste** do Stripe |
+  | `RESEND_API_KEY`, `EMAIL_FROM` | Resend |
+  | `APP_URL`, `CORS_ORIGINS` | O endereço do painel (passo 5) |
+
+**3. Painel (opcional):** **New › Web Service**, mesmo repositório
+- Name: `startbig-hml-web` · Branch: `homologacao-render` · Runtime: Node · Plan: Free.
+- Build Command: `npm ci --include=dev && npm run build --workspace=apps/web`
+- Start Command: `npm run start --workspace=apps/web`
+- Variáveis: `NODE_VERSION` = `22`, `NODE_ENV` = `production`, `NEXT_PUBLIC_API_URL` = o endereço da API.
+- Se o build do painel estourar a memória do plano gratuito (512 MB), pule o painel: dá para confirmar o cadastro pela API (passo 8, fluxo 1).
+
 ## 5. Conferir os endereços e refazer o painel
 
 1. Abra cada serviço e copie o endereço que o Render deu (algo como `https://startbig-hml-api.onrender.com`).
@@ -68,13 +114,31 @@ Teste rápido no navegador: `https://<api>/licenca/chave-publica` deve devolver 
 
 ## 6. Criar o admin e os planos (seed)
 
-O cadastro e a confirmação precisam de um usuário ADMIN e de um plano ATIVO. No serviço da API, abra a aba **Shell** e rode:
+O cadastro e a confirmação precisam de um usuário ADMIN e de um plano ATIVO. Em plano pago, abra a aba **Shell** do serviço da API e rode (no gratuito, veja o passo 6b):
 
 ```bash
 # O seed cria (ou mantém) o admin e os planos. Use um e-mail e uma senha SEUS:
 # o padrão do arquivo (admin@admin.com / admin123) não pode ficar num servidor público.
 ADMIN_EMAIL="voce@seudominio.com.br" ADMIN_SENHA="uma-senha-forte" npx tsx prisma/seed.ts
 ```
+
+### 6b. Seed no plano gratuito (sem Shell)
+
+Rode do seu computador, numa cópia da branch `homologacao-render` com as dependências instaladas (`npm install` na raiz), apontando para o banco **de homologação** pela **External Database URL**:
+
+```bash
+# DATABASE_URL aqui é a External Database URL do banco DO RENDER (homologação).
+# Confira duas vezes: nunca rode este comando com o endereço do banco da produção.
+DATABASE_URL="<External Database URL do startbig-hml-db>" \
+ADMIN_EMAIL="voce@seudominio.com.br" ADMIN_SENHA="uma-senha-forte" \
+npx tsx prisma/seed.ts
+```
+
+Se der erro de SSL ou de conexão recusada, acrescente `?sslmode=require` ao fim da URL (o Render exige SSL nas conexões de fora).
+
+No Windows (PowerShell), defina as variáveis antes, uma por linha (`$env:DATABASE_URL="..."`, `$env:ADMIN_EMAIL="..."`, `$env:ADMIN_SENHA="..."`), e depois rode `npx tsx prisma/seed.ts`.
+
+**Confirmar o cadastro sem o painel:** o link do e-mail aponta para `<APP_URL>/confirmar-cadastro?token=...`. Sem o painel no ar, copie o `token` do link e abra no navegador `https://<api>/erp/auto-cadastro/confirmar?token=<token>`. A resposta "Conta confirmada..." é o mesmo que a página mostraria.
 
 ## 7. Instalador de teste do app (start-big)
 
