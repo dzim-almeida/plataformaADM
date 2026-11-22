@@ -1,148 +1,209 @@
-# Homologação no Render: testar a série de licença antes da produção
+# Homologação no Render (plano gratuito)
 
-> Mora só na branch `homologacao-render` do fork `dzim-almeida/plataformaADM`, junto com o `render.yaml`. Não entra no PR para a produção.
+Testar a API da série de licença (LIC-05, LIC-06 e LIC-09) num servidor **separado da produção**, antes do deploy de verdade.
 
-## 1. Para que serve
+> Este guia e a coleção do Postman (`docs/homologacao-render.postman_collection.json`) moram só na branch `homologacao-render` do fork. Não entram no PR para a produção.
 
-Subir as mudanças da série de licença (LIC-05, LIC-06, LIC-09 na plataforma; LIC-01 a LIC-04 e LIC-08 no app) num lugar **separado da produção**, testar os fluxos de ponta a ponta e só depois fazer o deploy de verdade.
-
-O ambiente tem três peças, todas no Render e todas novas:
+## 1. O que vamos montar
 
 | Peça | Nome no Render | O que é |
 |------|----------------|---------|
-| Banco | `startbig-hml-db` | Postgres vazio, só de teste |
-| API | `startbig-hml-api` | NestJS (`apps/server`) |
-| Painel | `startbig-hml-web` | Next.js (`apps/web`); só a página `/confirmar-cadastro` importa aqui |
+| Banco | `startbig-hml-db` | Postgres gratuito, vazio, só de teste |
+| API | `startbig-hml-api` | O servidor NestJS (`apps/server`), plano gratuito |
 
-**Regra de ouro:** nada da produção entra aqui. Banco próprio, par de chaves RSA próprio, Stripe e Asaas em modo de teste, e-mails só para endereços seus.
+O painel web não é necessário: o roteiro lê os e-mails pelo histórico da própria API.
 
-## 2. O que você precisa ter em mãos
+**Regra de ouro:** nada da produção entra aqui. Nem banco, nem chaves, nem segredos.
 
-- Conta no Render, com acesso ao GitHub do fork `dzim-almeida/plataformaADM`.
-- Chaves de **teste** do Stripe: `sk_test_...` e um segredo de webhook `whsec_...` (o boot da API exige as duas).
-- Uma chave do Resend e um remetente (`EMAIL_FROM`) que o Resend aceite.
-- Node 22 no seu computador, só para gerar o par de chaves (passo 3).
-- Para testar o app: um computador ou máquina virtual **Windows que não seja de loja** (passo 7).
+### Limites do plano gratuito
 
-## 3. Gerar o par de chaves RSA de teste
+- **O serviço "dorme"** depois de ~15 minutos sem uso e leva ~50 segundos para acordar. Antes de testar, rode o passo `00` do Postman e espere a resposta.
+- **O banco gratuito expira em 30 dias.** Depois disso, é só criar outro e repetir o guia.
+- **Não há aba Shell** no serviço: o seed roda do seu computador (passo 6).
 
-É o par que assina os tokens da licença. Ele **não pode** ser o da produção: assim um token de homologação nunca vale na produção, e vice-versa.
+## 2. O que você precisa
 
-No terminal do seu computador:
+- Conta no Render ligada ao GitHub do fork `dzim-almeida/plataformaADM`.
+- Node (qualquer versão recente) e o repositório no seu computador, **só para o seed** (passo 6).
+- [Postman](https://www.postman.com/downloads/) para o roteiro de testes.
 
-```bash
-# Gera um par RSA de 2048 bits e imprime as duas chaves em base64,
-# no formato que a API espera (LICENCA_PRIVATE_KEY e LICENCA_PUBLIC_KEY).
-node -e "const {generateKeyPairSync}=require('crypto');const k=generateKeyPairSync('rsa',{modulusLength:2048,publicKeyEncoding:{type:'spki',format:'pem'},privateKeyEncoding:{type:'pkcs8',format:'pem'}});console.log('LICENCA_PRIVATE_KEY='+Buffer.from(k.privateKey).toString('base64'));console.log('LICENCA_PUBLIC_KEY='+Buffer.from(k.publicKey).toString('base64'))"
-```
+Não precisa de Stripe, de Resend, de gerar chaves à mão nem de máquina Windows: o guia usa valores falsos onde a API só exige que a variável exista.
 
-Guarde as duas linhas num gerenciador de senhas. Não cole em chat, issue nem commit.
+## 3. Criar o banco
 
-## 4. Criar o ambiente pelo Blueprint (planos pagos)
+1. No Render: **New › Postgres**.
+2. Name `startbig-hml-db`, Database `startbig_hml`, User `startbig_hml`, Plan **Free**. **Create Database**.
+3. Na página do banco, em **Connections**, copie e guarde:
+   - **Internal Database URL**, que a API usa (passo 4);
+   - **External Database URL**, que o seed usa (passo 6).
 
-> **Plano gratuito:** o Render não aplica o Blueprint. Pule para o passo 4b.
+## 4. Criar a API
 
-1. No Render: **New › Blueprint**.
-2. Escolha o repositório `dzim-almeida/plataformaADM` e a branch **`homologacao-render`**. O Render lê o `render.yaml` e mostra o banco e os dois serviços.
-3. Ele pede os valores marcados com `sync: false`. Preencha:
+1. **New › Web Service** e escolha o repositório `dzim-almeida/plataformaADM`.
+2. Preencha:
 
-   | Variável | Serviço | Valor |
-   |----------|---------|-------|
-   | `LICENCA_PRIVATE_KEY`, `LICENCA_PUBLIC_KEY` | API | As duas linhas do passo 3 (só o que vem depois do `=`) |
-   | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | API | Chaves de **teste** do Stripe |
-   | `RESEND_API_KEY`, `EMAIL_FROM` | API | Resend |
-   | `APP_URL` | API | Deixe `https://startbig-hml-web.onrender.com` (ajuste no passo 5 se o Render der outro endereço) |
-   | `CORS_ORIGINS` | API | O mesmo endereço do painel |
-   | `ADMIN_ALERT_EMAIL` | API | Seu e-mail (ou vazio) |
-   | `NEXT_PUBLIC_API_URL` | Painel | `https://startbig-hml-api.onrender.com` |
+   | Campo | Valor |
+   |-------|-------|
+   | Name | `startbig-hml-api` |
+   | Branch | `homologacao-render` |
+   | Root Directory | (vazio: a raiz do repositório) |
+   | Runtime / Language | Node |
+   | Build Command | `npm ci --include=dev && npm run build --workspace=apps/server && npx prisma db push` |
+   | Start Command | `npm run start --workspace=apps/server` |
+   | Instance Type | **Free** |
 
-4. **Apply**. O primeiro build da API instala as dependências, compila e roda o `prisma db push`, que cria as tabelas no banco de homologação.
+   O que o Build Command faz: instala as dependências (o `--include=dev` traz o TypeScript e o Prisma, que o build usa), compila a API e cria as tabelas no banco **de homologação** (`prisma db push`).
 
-`JWT_SECRET` e `FISCAL_TOKENS_KEY` o Render gera sozinho. O backup em nuvem (`BACKUP_S3_*`) fica de fora: sem ele, a API responde que o armazenamento não está configurado. Se quiser testar backup, crie um bucket **de teste** no R2 e acrescente as variáveis `BACKUP_S3_*` no serviço da API.
+3. Em **Advanced › Health Check Path**: `/licenca/chave-publica`.
+4. Em **Environment Variables**, acrescente:
 
-## 4b. Plano gratuito: criar à mão (sem Blueprint)
+   | Variável | Valor | Por quê |
+   |----------|-------|---------|
+   | `NODE_VERSION` | `22` | Versão do Node usada no projeto |
+   | `NODE_ENV` | `production` | Liga as travas de segurança, como na produção |
+   | `DATABASE_URL` | A **Internal Database URL** do passo 3 | O banco de homologação |
+   | `JWT_SECRET` | Clique em **Generate** | Segredo do login do painel |
+   | `FISCAL_TOKENS_KEY` | Clique em **Generate** | Chave dos segredos fiscais (própria da homologação) |
+   | `STRIPE_SECRET_KEY` | `sk_test_falso` | A API só exige que exista; pagamento não entra nos testes |
+   | `STRIPE_WEBHOOK_SECRET` | `whsec_falso` | Idem |
+   | `RESEND_API_KEY` | `re_falso` | A biblioteca do Resend não carrega sem chave. Nenhum e-mail sai: eles ficam no histórico da API, com o link dentro |
+   | `APP_URL` | `https://startbig-hml-api.onrender.com` | Monta os links dos e-mails. Não há painel; o roteiro só lê o token do link |
 
-No plano gratuito o Render não aplica o Blueprint. Crie as peças pelo painel, com as mesmas configurações do `render.yaml` (que continua servindo de referência). Três diferenças do gratuito:
+   **Deixe de fora**, por enquanto, `LICENCA_PRIVATE_KEY` e `LICENCA_PUBLIC_KEY` (passo 5).
 
-- **Não há aba Shell** no serviço: o seed roda do seu computador (passo 6b).
-- **O serviço "dorme"** depois de ~15 minutos sem uso e leva ~50 segundos para acordar. O app espera só 3 segundos e cai no modo offline. Antes de cada rodada de testes, **acorde a API** abrindo `https://<api>/licenca/chave-publica` no navegador e esperando a resposta.
-- **O Postgres gratuito expira em 30 dias.** Serve para uma rodada de testes.
+5. **Create Web Service** e espere o primeiro deploy terminar ("Live").
 
-**1. Banco:** **New › Postgres**
-- Name: `startbig-hml-db` · Database: `startbig_hml` · User: `startbig_hml` · Plan: **Free**.
-- Depois de criado, copie da página dele a **Internal Database URL** (usada pela API) e a **External Database URL** (usada no seed, passo 6b).
+## 5. Fixar as chaves RSA da licença
 
-**2. API:** **New › Web Service** › repositório `dzim-almeida/plataformaADM`
-- Name: `startbig-hml-api` · Branch: **`homologacao-render`** · Root Directory: vazio (a raiz do repositório) · Runtime: **Node** · Plan: **Free**.
-- Build Command:
-  ```bash
-  npm ci --include=dev && npm run build --workspace=apps/server && npx prisma db push
-  ```
-- Start Command:
-  ```bash
-  npm run start --workspace=apps/server
-  ```
-- Em **Advanced**: Health Check Path `/licenca/chave-publica`.
-- **Environment Variables** (botão "Add Environment Variable"):
+São as chaves que assinam os tokens da licença. Sem elas fixas, a API gera um par novo **a cada vez que acorda**, e os tokens emitidos antes passam a ser recusados.
 
-  | Variável | Valor |
-  |----------|-------|
-  | `NODE_VERSION` | `22` |
-  | `NODE_ENV` | `production` |
-  | `DATABASE_URL` | A **Internal Database URL** do banco |
-  | `JWT_SECRET` | Um valor aleatório (botão "Generate" do Render) |
-  | `FISCAL_TOKENS_KEY` | Um valor aleatório (botão "Generate") |
-  | `LICENCA_PRIVATE_KEY`, `LICENCA_PUBLIC_KEY` | As duas linhas do passo 3 (só o que vem depois do `=`) |
-  | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Chaves de **teste** do Stripe |
-  | `RESEND_API_KEY`, `EMAIL_FROM` | Resend |
-  | `APP_URL`, `CORS_ORIGINS` | O endereço do painel (passo 5) |
+1. Abra a aba **Logs** da API e procure, perto do início do boot, estas linhas:
+   ```
+   [LICENÇA] Chaves RS256 não configuradas — par temporário gerado para desenvolvimento.
+   LICENCA_PRIVATE_KEY="..."
+   LICENCA_PUBLIC_KEY="..."
+   ```
+2. Em **Environment**, crie as duas variáveis com esses valores (o texto **entre as aspas**, sem as aspas).
+3. **Save Changes**. O Render reinicia a API com as chaves fixas.
 
-**3. Painel (opcional):** **New › Web Service**, mesmo repositório
-- Name: `startbig-hml-web` · Branch: `homologacao-render` · Runtime: Node · Plan: Free.
-- Build Command: `npm ci --include=dev && npm run build --workspace=apps/web`
-- Start Command: `npm run start --workspace=apps/web`
-- Variáveis: `NODE_VERSION` = `22`, `NODE_ENV` = `production`, `NEXT_PUBLIC_API_URL` = o endereço da API.
-- Se o build do painel estourar a memória do plano gratuito (512 MB), pule o painel: dá para confirmar o cadastro pela API (passo 8, fluxo 1).
-
-## 5. Conferir os endereços e refazer o painel
-
-1. Abra cada serviço e copie o endereço que o Render deu (algo como `https://startbig-hml-api.onrender.com`).
-2. Se for diferente do que você preencheu, corrija `APP_URL` e `CORS_ORIGINS` (API) e `NEXT_PUBLIC_API_URL` (painel).
-3. Refaça o deploy do **painel** (Manual Deploy): o `NEXT_PUBLIC_API_URL` entra no build do Next.js.
-
-Teste rápido no navegador: `https://<api>/licenca/chave-publica` deve devolver `{ "publicKey": "-----BEGIN PUBLIC KEY-----..." }`, e essa chave tem que ser a **de teste** do passo 3.
+São chaves **só de homologação**: nunca use as da produção aqui, nem estas lá. Não cole as chaves em chat, issue nem commit.
 
 ## 6. Criar o admin e os planos (seed)
 
-O cadastro e a confirmação precisam de um usuário ADMIN e de um plano ATIVO. Em plano pago, abra a aba **Shell** do serviço da API e rode (no gratuito, veja o passo 6b):
+O banco nasce vazio, e o cadastro precisa de duas coisas que o seed cria:
+- **um usuário ADMIN**: todo cliente novo fica ligado a ele, e é com ele que o roteiro lê os e-mails;
+- **um plano ATIVO**: a licença de teste nasce ligada a ele na confirmação.
+
+No seu computador, numa cópia do fork na branch `homologacao-render`:
 
 ```bash
-# O seed cria (ou mantém) o admin e os planos. Use um e-mail e uma senha SEUS:
-# o padrão do arquivo (admin@admin.com / admin123) não pode ficar num servidor público.
-ADMIN_EMAIL="voce@seudominio.com.br" ADMIN_SENHA="uma-senha-forte" npx tsx prisma/seed.ts
+git checkout homologacao-render
+npm install                      # instala as dependências (uma vez só)
 ```
 
-### 6b. Seed no plano gratuito (sem Shell)
-
-Rode do seu computador, numa cópia da branch `homologacao-render` com as dependências instaladas (`npm install` na raiz), apontando para o banco **de homologação** pela **External Database URL**:
+Depois, **no Git Bash, Linux ou Mac**:
 
 ```bash
-# DATABASE_URL aqui é a External Database URL do banco DO RENDER (homologação).
-# Confira duas vezes: nunca rode este comando com o endereço do banco da produção.
-DATABASE_URL="<External Database URL do startbig-hml-db>" \
-ADMIN_EMAIL="voce@seudominio.com.br" ADMIN_SENHA="uma-senha-forte" \
+# DATABASE_URL = a External Database URL do banco DE HOMOLOGAÇÃO (passo 3).
+# Confira duas vezes: nunca rode com o endereço do banco da produção.
+DATABASE_URL="<External Database URL>?sslmode=require" \
+ADMIN_EMAIL="voce@seudominio.com.br" \
+ADMIN_SENHA="uma-senha-forte" \
 npx tsx prisma/seed.ts
 ```
 
-Se der erro de SSL ou de conexão recusada, acrescente `?sslmode=require` ao fim da URL (o Render exige SSL nas conexões de fora).
+**No PowerShell (Windows)**, uma linha por vez:
 
-No Windows (PowerShell), defina as variáveis antes, uma por linha (`$env:DATABASE_URL="..."`, `$env:ADMIN_EMAIL="..."`, `$env:ADMIN_SENHA="..."`), e depois rode `npx tsx prisma/seed.ts`.
+```powershell
+$env:DATABASE_URL = "<External Database URL>?sslmode=require"
+$env:ADMIN_EMAIL  = "voce@seudominio.com.br"
+$env:ADMIN_SENHA  = "uma-senha-forte"
+npx tsx prisma/seed.ts
+```
 
-**Confirmar o cadastro sem o painel:** o link do e-mail aponta para `<APP_URL>/confirmar-cadastro?token=...`. Sem o painel no ar, copie o `token` do link e abra no navegador `https://<api>/erp/auto-cadastro/confirmar?token=<token>`. A resposta "Conta confirmada..." é o mesmo que a página mostraria.
+O `?sslmode=require` existe porque o Render exige conexão cifrada de fora. Se a URL já tiver um `?`, use `&sslmode=require`. O seed pode rodar de novo sem duplicar nada.
 
-## 7. Instalador de teste do app (start-big)
+Ao terminar, feche o terminal (no PowerShell, as variáveis somem junto) para não rodar outro comando sem querer contra esse banco.
 
-O app instalado fala com `https://api.startbig.com.br` (produção). O endereço está fixo em cinco arquivos do backend do `start-big`:
+## 7. Roteiro no Postman
+
+### Importar
+
+1. Postman › **Import** › escolha `docs/homologacao-render.postman_collection.json`.
+2. Abra a coleção **StartBig · Homologação da licença (Render)** › aba **Variables** e preencha a coluna **Current value**:
+
+   | Variável | O que colocar |
+   |----------|---------------|
+   | `baseUrl` | O endereço da API no Render (ex.: `https://startbig-hml-api.onrender.com`) |
+   | `adminEmail`, `adminSenha` | Os do seed (passo 6) |
+   | `clienteEmail` | Um e-mail com domínio real (a API confere o domínio). Ex.: `seuemail+hml1@gmail.com` |
+   | `clienteSenha` | Qualquer senha com 8 caracteres ou mais |
+   | `cpf` | Um CPF **válido** que ainda não esteja no banco. O padrão `52998224725` é um CPF de teste |
+   | `hwidServidor`, `hwidNovo` | Deixe como estão (são os "computadores" do teste) |
+
+   As outras variáveis (`adminToken`, `licencaToken`, `confirmToken`...) a coleção preenche sozinha.
+
+### Rodar
+
+Rode os passos **na ordem**, um por vez (botão **Send**), e olhe a aba **Test Results** de cada um. Ou use **Run collection** para rodar todos de uma vez.
+
+| Passo | O que testa | Esperado |
+|-------|-------------|----------|
+| 00 | Acorda a API | `200` com a chave pública |
+| 01 | Login do admin | `201` (guarda o token do admin) |
+| 02 | Cadastro pelo app **novo** | `202`, sem chave na resposta |
+| 03 | Cadastro pelo app **antigo** | `409 CONFIRMACAO_NECESSARIA` |
+| 04 | Login antes de confirmar | `403 AGUARDANDO_CONFIRMACAO_EMAIL` |
+| 05 | Achar o e-mail de confirmação no histórico | `200` (guarda o id do e-mail) |
+| 06 | Ler o link do e-mail | `200`; o link está lá e **a chave não** |
+| 07 | Confirmar o cadastro (o "clique" no link) | `200` "Conta confirmada" |
+| 08 | Confirmar de novo | `400 TOKEN_CONFIRMACAO_INVALIDO` |
+| 09 | Login do servidor da loja | `201` com a chave e o token da licença |
+| 10 | Dados do titular | `200`, documento formatado |
+| 11 | Trocar o documento | `403 DOCUMENTO_TRAVADO` |
+| 12 | Status do backup | `200`, `planoPermiteBackup: true` (trial sem full) |
+| 13 | Heartbeat **sem** token de caixa novo | `404 SESSAO_INEXISTENTE` (nunca `400`) |
+| 14 | Heartbeat **com** token de caixa novo | `201`, `ok: true` |
+| 15 | Reenviar link | `202`. Rode duas vezes seguidas: no histórico só aparece **um** e-mail novo |
+| 16 | Reenviar link de e-mail que não existe | `202`, a mesma resposta |
+| 17 | Troca de servidor (login de outro computador) | `201` |
+| 18 | Token do servidor antigo | `401 LICENCA_HWID_REVOGADO` |
+| 19 | Status do backup com o servidor novo | `200` |
+| 20 | Senha errada (rode **6 vezes**) | 1ª a 5ª: `401`. 6ª em diante: `429 MUITAS_TENTATIVAS` |
+
+O passo 20 fica por último porque bloqueia o login daquele e-mail por 1 minuto.
+
+### Rodar de novo do zero
+
+O cadastro é por e-mail e CPF: numa segunda rodada, troque `clienteEmail` (ex.: `+hml2`) e `cpf` (outro CPF válido de teste) nas variáveis. O admin e os planos continuam valendo.
+
+### Se algo der errado
+
+| Sintoma | Causa provável |
+|---------|----------------|
+| O passo 00 demora ou dá timeout | A API estava dormindo: mande de novo |
+| `400` no passo 02 falando do domínio do e-mail | O domínio do `clienteEmail` não existe. Use um real (gmail.com etc.) |
+| `400` no passo 02 falando de CPF | CPF inválido. Use um CPF de teste válido |
+| `400` no 02 com "Sistema não configurado para auto-cadastro" | Falta o admin: o seed não rodou (passo 6) |
+| `400` no 07 com "Nenhum plano ATIVO" | Faltam os planos: o seed não rodou (passo 6) |
+| `401` no passo 01 | `adminEmail`/`adminSenha` diferentes dos usados no seed |
+| A API não sobe; o log fala de "API key" do Resend | `RESEND_API_KEY` vazia. Ponha `re_falso` |
+| A API não sobe; o log fala de "Variáveis de ambiente obrigatórias" | Falta `JWT_SECRET`, `STRIPE_SECRET_KEY` ou `STRIPE_WEBHOOK_SECRET` (passo 4) |
+| `401` no passo 10 depois de um tempo parado | As chaves RSA não foram fixadas (passo 5): a API gerou um par novo ao acordar. Fixe-as e refaça desde o 09 |
+
+## 8. Manter a homologação em dia
+
+Quando a `fix/licenca-seguranca` receber commits novos:
+
+```bash
+git checkout homologacao-render            # vai para a branch de homologação
+git merge fix/licenca-seguranca            # traz as mudanças novas da série
+git push origin homologacao-render         # o Render faz o deploy sozinho
+```
+
+## 9. Testar também o app (opcional, exige Windows)
+
+O app instalado fala com `https://api.startbig.com.br` (produção). O endereço está fixo em cinco arquivos do `start-big`:
 
 - `backend-fastapi/app/services/licenca/constantes.py`
 - `backend-fastapi/app/services/cloud/_constants.py`
@@ -150,47 +211,12 @@ O app instalado fala com `https://api.startbig.com.br` (produção). O endereço
 - `backend-fastapi/app/services/licenca/renovacao.py`
 - `backend-fastapi/app/services/fiscal/os_notas.py` (`HOST_DA_PLATAFORMA`)
 
-Para o teste:
+Para um instalador de teste: numa cópia **à parte** da branch `fix/licenca-seguranca` do `start-big`, troque `api.startbig.com.br` pelo endereço da API do Render nesses cinco arquivos, **sem commitar**. Gere `npm run build:sidecar` e `npm run tauri build` em `frontend/`, e instale numa máquina **que não seja de loja**. Antes de abrir o app, acorde a API (passo 00): o app espera só 3 segundos e, se a API estiver dormindo, entra no modo offline.
 
-1. No seu computador Windows de desenvolvimento, numa cópia **à parte** da branch `fix/licenca-seguranca` do `start-big`, troque `api.startbig.com.br` pelo endereço da API do Render nesses cinco arquivos. **Não commite essa troca.**
-2. Gere o sidecar e o instalador (`npm run build:sidecar` e depois `npm run tauri build`, na pasta `frontend/`).
-3. Instale numa máquina **que não seja de loja**. O banco do app fica em `%LOCALAPPDATA%\StartBigERP\data`, e numa máquina que também é loja ele se misturaria com o de verdade.
-4. Desfaça a troca dos endereços. O instalador de teste não pode ir para cliente nenhum.
-
-**Por que não deixar o endereço configurável no app?** O app busca a chave pública na própria API que ele chama. Se desse para trocar o endereço na máquina do cliente (arquivo ou variável), uma API falsa mandaria a própria chave e liberaria todos os módulos. Se a homologação virar rotina, o certo é uma spec que junte o endereço numa constante só e escolha o destino **na hora do build**.
-
-**Instalador antigo (fluxo 2 abaixo):** para simular uma loja que não atualizou, faça o mesmo build a partir do commit que está hoje na produção (a principal do `start-big`), com os mesmos cinco endereços trocados.
-
-## 8. O que testar (passo 11 do roteiro)
-
-Anote em cada fluxo: funcionou, não funcionou (o que apareceu) ou não testado.
-
-1. **Cadastro novo com o app novo:** aparece "Cadastro enviado"; chega o e-mail de confirmação, **sem a chave**; o link abre a página "Conta confirmada"; o "Já tenho conta" entra e o setup vem preenchido com os dados da nuvem.
-2. **Cadastro com o instalador antigo:** aparece a mensagem do `409` ("...use a opção 'Já tenho conta'..."); depois de confirmar o e-mail, o "Já tenho conta" funciona.
-3. **Login diário:** com internet, os dias vêm da API; sem internet (desligue a rede), o app abre e mostra os dias como "estimados".
-4. **Re-login em outro computador:** aviso de troca antes de confirmar; o computador antigo para de funcionar; o backup dele para, com o motivo na tela.
-5. **Banco perdido:** re-login, escolha da restauração, reinício e os dados de volta.
-6. **Troca de servidor com caixas conectados:** as vagas da loja antiga são liberadas.
-7. **Banco copiado para outro computador:** o token e a chave não abrem; a tela leva à transferência.
-8. **Loja em teste (trial):** um backup na nuvem; depois dele, o aviso do trial; o download funciona. (Precisa do bucket de teste do passo 4.)
-
-Também vale conferir na API:
-
-- **Bloqueio de login:** cinco senhas erradas seguidas com o mesmo e-mail → espera de 1 minuto (`429 MUITAS_TENTATIVAS`).
-- **Reenviar link:** o mesmo e-mail duas vezes dentro de um minuto → só um e-mail chega.
-
-## 9. Manter a homologação em dia
-
-Quando a `fix/licenca-seguranca` receber commits novos:
-
-```bash
-git checkout homologacao-render            # vai para a branch de homologação
-git merge fix/licenca-seguranca            # traz as mudanças novas da série
-git push origin homologacao-render         # o Render faz o deploy sozinho (autoDeploy)
-```
+Nunca deixe esse endereço configurável no app das lojas. O app busca a chave pública na API que ele chama, e uma API falsa poderia liberar todos os módulos.
 
 ## 10. Ao terminar
 
-- Suspenda os dois serviços e apague o banco no Render, para não pagar por eles.
-- Descarte o par de chaves de teste e os instaladores de teste.
+- Apague o serviço `startbig-hml-api` e o banco `startbig-hml-db` no Render.
+- Descarte as chaves RSA de homologação e qualquer instalador de teste.
 - O deploy de produção segue o roteiro de sempre (`docs/deploy-pix-asaas.md`), com a conferência do diff do `db push` da LIC-06: o esperado é **só** `ALTER TABLE "clientes" ADD COLUMN ...`.

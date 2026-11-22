@@ -1,0 +1,1060 @@
+{
+  "info": {
+    "name": "StartBig · Homologação da licença (Render)",
+    "description": "Roteiro de testes da API de homologação (LIC-05, LIC-06, LIC-09). Passo a passo em docs/homologacao-render.md. Preencha as variáveis da coleção antes de rodar.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 · Acordar a API",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/licenca/chave-publica",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "licenca",
+            "chave-publica"
+          ]
+        },
+        "description": "Rode primeiro. Se demorar, é o serviço gratuito acordando.",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// O plano gratuito \"dorme\": esta chamada acorda a API (pode levar ~50 s).",
+              "pm.test('API no ar (200)', () => pm.response.to.have.status(200));",
+              "pm.test('Devolve a chave pública de TESTE', () => pm.expect(pm.response.json().publicKey).to.include('BEGIN PUBLIC KEY'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 · Login do admin (painel)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "auth",
+            "login"
+          ]
+        },
+        "description": "Usa o admin criado pelo seed.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"senha\": \"{{adminSenha}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Guarda o token do admin: ele lê o histórico de e-mails (passo 05).",
+              "pm.test('Admin entrou (201)', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('adminToken', pm.response.json().token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 · Cadastro pelo app NOVO → 202",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auto-cadastro",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auto-cadastro"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"documento\": \"{{cpf}}\",\n  \"nomeOuRazao\": \"Loja de Teste\",\n  \"email\": \"{{clienteEmail}}\",\n  \"senha\": \"{{clienteSenha}}\",\n  \"fluxoConfirmacao\": true\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06: o app novo recebe 202, e nenhuma chave volta na resposta.",
+              "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+              "pm.test('Sem chave de ativação na resposta', () => pm.expect(pm.response.text()).to.not.include('chaveAtivacao'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 · Cadastro pelo app ANTIGO → 409",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auto-cadastro",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auto-cadastro"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"documento\": \"{{cpf}}\",\n  \"nomeOuRazao\": \"Loja de Teste\",\n  \"email\": \"{{clienteEmail}}\",\n  \"senha\": \"{{clienteSenha}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06 (ADR-004): sem `fluxoConfirmacao`, as versões instaladas recebem 409",
+              "// com a instrução, que elas mostram na tela.",
+              "pm.test('409 CONFIRMACAO_NECESSARIA', () => {",
+              "  pm.response.to.have.status(409);",
+              "  pm.expect(pm.response.json().codigo).to.eql('CONFIRMACAO_NECESSARIA');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 · Login antes da confirmação → 403",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auth",
+            "login"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clienteEmail}}\",\n  \"senha\": \"{{clienteSenha}}\",\n  \"hwid\": \"{{hwidServidor}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06: conta sem licença e com confirmação pendente não recebe a chave.",
+              "pm.test('403 AGUARDANDO_CONFIRMACAO_EMAIL', () => {",
+              "  pm.response.to.have.status(403);",
+              "  pm.expect(pm.response.json().codigo).to.eql('AGUARDANDO_CONFIRMACAO_EMAIL');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 · Achar o e-mail de confirmação",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/email/historico?tipo=CONFIRMACAO_CADASTRO",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "email",
+            "historico"
+          ],
+          "query": [
+            {
+              "key": "tipo",
+              "value": "CONFIRMACAO_CADASTRO"
+            }
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Com a chave do Resend falsa, o e-mail não sai, mas fica no histórico (status FALHOU).",
+              "// Guarda o id do mais recente para o passo 06.",
+              "pm.test('Histórico lido (200)', () => pm.response.to.have.status(200));",
+              "const itens = pm.response.json().itens;",
+              "pm.test('Há e-mail de confirmação', () => pm.expect(itens.length).to.be.above(0));",
+              "pm.collectionVariables.set('emailId', itens[0].id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 · Ler o link de confirmação",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/email/historico/{{emailId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "email",
+            "historico",
+            "{{emailId}}"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{adminToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Tira o token do link \"confirmar-cadastro?token=...\" que está no HTML do e-mail.",
+              "pm.test('E-mail lido (200)', () => pm.response.to.have.status(200));",
+              "const achado = /confirmar-cadastro\\?token=([a-f0-9]+)/.exec(pm.response.json().html);",
+              "pm.test('O e-mail tem o link', () => pm.expect(achado).to.not.be.null);",
+              "pm.test('O e-mail NÃO leva a chave de ativação', () => pm.expect(pm.response.json().html).to.not.include('START-'));",
+              "if (achado) pm.collectionVariables.set('confirmToken', achado[1]);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 · Confirmar o cadastro (o clique no link)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auto-cadastro/confirmar?token={{confirmToken}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auto-cadastro",
+            "confirmar"
+          ],
+          "query": [
+            {
+              "key": "token",
+              "value": "{{confirmToken}}"
+            }
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06: cria a licença de teste de 14 dias a partir de agora.",
+              "pm.test('Conta confirmada (200)', () => {",
+              "  pm.response.to.have.status(200);",
+              "  pm.expect(pm.response.json().message).to.include('Conta confirmada');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 · Confirmar de novo → 400",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auto-cadastro/confirmar?token={{confirmToken}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auto-cadastro",
+            "confirmar"
+          ],
+          "query": [
+            {
+              "key": "token",
+              "value": "{{confirmToken}}"
+            }
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// O link é de uso único: o segundo clique não cria outra licença.",
+              "pm.test('400 TOKEN_CONFIRMACAO_INVALIDO', () => {",
+              "  pm.response.to.have.status(400);",
+              "  pm.expect(pm.response.json().codigo).to.eql('TOKEN_CONFIRMACAO_INVALIDO');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 · Login do servidor da loja",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auth",
+            "login"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clienteEmail}}\",\n  \"senha\": \"{{clienteSenha}}\",\n  \"hwid\": \"{{hwidServidor}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Depois da confirmação, o login devolve a chave e o TOKEN DA LICENÇA, que os",
+              "// próximos passos usam no cabeçalho Authorization.",
+              "pm.test('Login ok (201)', () => pm.response.to.have.status(201));",
+              "const r = pm.response.json();",
+              "pm.test('Devolve a chave de ativação', () => pm.expect(r.chaveAtivacao).to.be.a('string'));",
+              "pm.collectionVariables.set('licencaToken', r.token);",
+              "pm.collectionVariables.set('licencaId', r.licencaId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · Dados do titular",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/erp/usuario/titular",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "usuario",
+            "titular"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{licencaToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Titular lido (200)', () => pm.response.to.have.status(200));",
+              "pm.test('Documento formatado', () => pm.expect(pm.response.json().documento).to.match(/\\d{3}\\.\\d{3}\\.\\d{3}-\\d{2}/));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 · Trocar o documento → 403",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/usuario/titular",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "usuario",
+            "titular"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"documento\": \"11122233344\",\n  \"nomeOuRazao\": \"Outro Nome\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{licencaToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06: o CPF/CNPJ do titular nunca muda pelo app.",
+              "pm.test('403 DOCUMENTO_TRAVADO', () => {",
+              "  pm.response.to.have.status(403);",
+              "  pm.expect(pm.response.json().codigo).to.eql('DOCUMENTO_TRAVADO');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "12 · Status do backup (trial sem full)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/erp/backup/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "backup",
+            "status"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{licencaToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-05: o trial ainda sem backup completo pode enviar um.",
+              "pm.test('Status lido (200)', () => pm.response.to.have.status(200));",
+              "pm.test('Trial pode enviar o primeiro backup', () => pm.expect(pm.response.json().planoPermiteBackup).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 · Heartbeat SEM token de caixa novo → 404",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/licenca/heartbeat",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "licenca",
+            "heartbeat"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"licencaId\": \"{{licencaId}}\",\n  \"hwid\": \"caixa-de-teste-01\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-09: sem token (versão instalada) a API não cria sessão. 404, nunca 400.",
+              "pm.test('404 SESSAO_INEXISTENTE', () => {",
+              "  pm.response.to.have.status(404);",
+              "  pm.expect(pm.response.json().codigo).to.eql('SESSAO_INEXISTENTE');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "14 · Heartbeat COM token de caixa novo → cria",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/licenca/heartbeat",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "licenca",
+            "heartbeat"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"licencaId\": \"{{licencaId}}\",\n  \"hwid\": \"caixa-de-teste-01\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{licencaToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-09: com o token da licença, a sessão é criada (se couber).",
+              "pm.test('Sessão criada (201)', () => pm.response.to.have.status(201));",
+              "pm.test('ok: true', () => pm.expect(pm.response.json().ok).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 · Reenviar link → 202",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auth/reenviar-link",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auth",
+            "reenviar-link"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clienteEmail}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06: sempre 202, com a mesma mensagem, exista ou não o e-mail.",
+              "// Rode duas vezes seguidas: no histórico (passo 05, tipo PRIMEIRO_ACESSO) só aparece UM e-mail.",
+              "pm.test('202 Accepted', () => pm.response.to.have.status(202));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 · Reenviar link de e-mail que não existe → 202",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auth/reenviar-link",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auth",
+            "reenviar-link"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"ninguem-cadastrado@gmail.com\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Mesma resposta (202)', () => pm.response.to.have.status(202));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 · Troca de servidor (login de outro computador)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auth",
+            "login"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clienteEmail}}\",\n  \"senha\": \"{{clienteSenha}}\",\n  \"hwid\": \"{{hwidNovo}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// O login por outro computador assume a licença e revoga o servidor antigo.",
+              "// Guarda o token antigo para o passo 18.",
+              "pm.test('Troca aceita (201)', () => pm.response.to.have.status(201));",
+              "pm.collectionVariables.set('licencaTokenAntigo', pm.collectionVariables.get('licencaToken'));",
+              "pm.collectionVariables.set('licencaToken', pm.response.json().token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 · Token do servidor antigo → 401",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/erp/backup/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "backup",
+            "status"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{licencaTokenAntigo}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-05: o token da máquina trocada deixa de valer na hora, mesmo dentro dos 7 dias.",
+              "pm.test('401 LICENCA_HWID_REVOGADO', () => {",
+              "  pm.response.to.have.status(401);",
+              "  pm.expect(pm.response.json().codigo).to.eql('LICENCA_HWID_REVOGADO');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 · Status do backup com o servidor novo",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/erp/backup/status",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "backup",
+            "status"
+          ]
+        },
+        "description": "",
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "{{licencaToken}}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Servidor novo consulta normalmente (200)', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 · Senha errada (rode 6 vezes)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/erp/auth/login",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "erp",
+            "auth",
+            "login"
+          ]
+        },
+        "description": "Deixe por último: ele bloqueia o login deste e-mail por 1 minuto.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{clienteEmail}}\",\n  \"senha\": \"senha-errada-123\",\n  \"hwid\": \"{{hwidNovo}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// LIC-06: da 1ª à 5ª vez → 401 CREDENCIAIS_INVALIDAS. A 5ª bloqueia o e-mail por 1 minuto,",
+              "// então da 6ª em diante → 429 MUITAS_TENTATIVAS (até com a senha certa).",
+              "pm.test('401 ou 429', () => pm.expect(pm.response.code).to.be.oneOf([401, 429]));",
+              "console.log('Resposta:', pm.response.code, pm.response.json().codigo);"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://startbig-hml-api.onrender.com"
+    },
+    {
+      "key": "adminEmail",
+      "value": "voce@seudominio.com.br"
+    },
+    {
+      "key": "adminSenha",
+      "value": "troque-pela-senha-do-seed"
+    },
+    {
+      "key": "clienteEmail",
+      "value": "seuemail+hml1@gmail.com"
+    },
+    {
+      "key": "clienteSenha",
+      "value": "senha-do-cliente-1"
+    },
+    {
+      "key": "cpf",
+      "value": "52998224725"
+    },
+    {
+      "key": "hwidServidor",
+      "value": "hwid-servidor-hml-01"
+    },
+    {
+      "key": "hwidNovo",
+      "value": "hwid-notebook-hml-02"
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    },
+    {
+      "key": "licencaToken",
+      "value": ""
+    },
+    {
+      "key": "licencaTokenAntigo",
+      "value": ""
+    },
+    {
+      "key": "licencaId",
+      "value": ""
+    },
+    {
+      "key": "emailId",
+      "value": ""
+    },
+    {
+      "key": "confirmToken",
+      "value": ""
+    }
+  ]
+}
