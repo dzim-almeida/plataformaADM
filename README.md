@@ -1,37 +1,76 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# plataformaADM
 
-## Getting Started
+Plataforma de suporte e monitoramento do ERP desktop StartBIG. Reúne o painel
+administrativo e a API que o ERP das lojas consulta:
 
-First, run the development server:
+- **Licenças**: ativação, conexão e limite de computadores de cada loja.
+- **Cobrança**: assinaturas no cartão (Stripe) e PIX (Asaas), renovação e comissões de parceiros.
+- **Fiscal**: emissão de NF-e, NFC-e e NFS-e pela Focus NFe, com franquia mensal.
+- **Backup**: o ERP envia o banco e as imagens para o Cloudflare R2.
+- **Monitoramento**: saúde fiscal, histórico de e-mails e notificações no celular do admin.
+
+## Como está organizado
+
+```
+apps/server     API NestJS (porta 3001)
+apps/web        Painel Next.js (porta 3000)
+packages/       Código compartilhado: database (Prisma) e schemas (Zod)
+prisma/         Schema do banco, migrações e seed
+scripts/        Scripts de operação, por assunto
+docs/           Contratos com o ERP e documentação interna
+```
+
+O mapa completo, com as convenções e uma tabela de "onde coloco cada coisa", está
+em [docs/estrutura.md](docs/estrutura.md).
+
+## Rodando localmente
+
+Precisa de Node.js 20+ e um PostgreSQL.
+
+```bash
+npm install
+```
+
+```bash
+cp apps/server/.env.example apps/server/.env
+```
+
+Preencha pelo menos `DATABASE_URL` no `apps/server/.env`. Os outros serviços
+(Stripe, Asaas, Focus, R2) são opcionais em desenvolvimento: sem a chave, a parte
+correspondente fica desligada e o resto sobe normalmente.
+
+```bash
+npm run db:push
+```
+
+```bash
+npm run dev:server
+```
+
+Em outro terminal:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+O painel abre em http://localhost:3000. Ele encontra a API pela variável
+`SERVER_URL` (padrão `http://localhost:3001`).
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+## Testes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm test --workspace=apps/server
+```
 
-## Learn More
+## Deploy
 
-To learn more about Next.js, take a look at the following resources:
+Hoje o deploy é feito na VPS com `npm run deploy` (pull, install, `db push`,
+build e restart no PM2). Os riscos desse processo e o plano para trocá-lo por CI
+e migrações estão no code review do projeto.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Documentos importantes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# plataformaADM
+- [docs/erp-portas-de-entrada.md](docs/erp-portas-de-entrada.md): todas as rotas que o ERP chama.
+- [docs/integracao-erp-local.md](docs/integracao-erp-local.md): guia de integração do ERP.
+- [docs/erp-backup-contrato.md](docs/erp-backup-contrato.md): contrato do backup em nuvem.
+- [docs/deploy-pix-asaas.md](docs/deploy-pix-asaas.md): como ligar o PIX em produção.

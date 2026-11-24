@@ -14,7 +14,7 @@ Plataforma SaaS de gestão para distribuidores de ERP. Admin panel que gerencia 
 - Backend: NestJS em `apps/server` (porta 3001), TypeScript, Prisma ORM
 - Frontend: Next.js em `apps/web` (porta 3000), Tailwind CSS
 - Banco: PostgreSQL via Prisma
-- Shared: `packages/database` (repositórios Prisma), `packages/schemas` (Zod), `packages/ui`
+- Shared: `packages/database` (repositórios Prisma), `packages/schemas` (Zod)
 
 **Funcionalidades implementadas:**
 - Auth JWT (guard + roles ADMIN)
