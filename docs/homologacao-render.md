@@ -219,4 +219,4 @@ Nunca deixe esse endereço configurável no app das lojas. O app busca a chave p
 
 - Apague o serviço `startbig-hml-api` e o banco `startbig-hml-db` no Render.
 - Descarte as chaves RSA de homologação e qualquer instalador de teste.
-- O deploy de produção segue o roteiro de sempre (`docs/deploy-pix-asaas.md`), com a conferência do diff do `db push` da LIC-06: o esperado é **só** `ALTER TABLE "clientes" ADD COLUMN ...`.
+- O deploy de produção segue o roteiro de sempre (`docs/deploy-pix-asaas.md`), com a conferência do diff do `db push` da LIC-06: o esperado é **só** `ALTER TABLE "clientes" ADD COLUMN ...` e `ALTER TABLE "clientes_pf" ADD COLUMN ...` (telefone e celular da PF).
