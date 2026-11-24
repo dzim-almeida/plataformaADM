@@ -211,8 +211,9 @@ export class ErpUsuarioService {
       nomeOuRazao:  pj?.razaoSocial ?? pf?.nomeCompleto ?? '',
       documento:    formatarDocumento(pj?.cnpj ?? pf?.cpf ?? ''),
       nomeFantasia: pj?.nomeFantasia ?? null,
-      telefone:     pj?.telefone ?? null,
-      celular:      pj?.celular ?? null,
+      // PJ e PF guardam o contato cada uma na sua tabela.
+      telefone:     pj?.telefone ?? pf?.telefone ?? null,
+      celular:      pj?.celular ?? pf?.celular ?? null,
       endereco: endereco
         ? {
             cep: endereco.cep, logradouro: endereco.logradouro, numero: endereco.numero,
@@ -228,8 +229,8 @@ export class ErpUsuarioService {
    * do app criar a empresa local (D-22).
    * - `documento` no corpo: 403 DOCUMENTO_TRAVADO (nunca muda por aqui).
    * - PJ: razão social, nome fantasia e telefones em `pj`.
-   * - PF: o nome vai para `pf.nomeCompleto` (a PF não tem fantasia nem
-   *   telefone no cadastro da nuvem; esses campos são ignorados).
+   * - PF: o nome vai para `pf.nomeCompleto` e os telefones para a `pf`
+   *   (a PF não tem nome fantasia; esse campo é ignorado).
    * - Sem endereço na nuvem: cria um principal.
    */
   async atualizarTitular(licencaId: string, body: unknown) {
@@ -249,8 +250,14 @@ export class ErpUsuarioService {
       if (dados.telefone !== undefined)     campos.telefone     = dados.telefone
       if (dados.celular !== undefined)      campos.celular      = dados.celular
       if (Object.keys(campos).length) await this.prisma.clientePJ.update({ where: { clienteId: cliente.id }, data: campos })
-    } else if (cliente.pf && dados.nomeOuRazao !== undefined) {
-      await this.prisma.clientePF.update({ where: { clienteId: cliente.id }, data: { nomeCompleto: dados.nomeOuRazao } })
+    } else if (cliente.pf) {
+      // PF: o nome vai para `nomeCompleto`; telefones, para a própria PF.
+      // A PF não tem nome fantasia: esse campo é ignorado.
+      const campos: Record<string, unknown> = {}
+      if (dados.nomeOuRazao !== undefined) campos.nomeCompleto = dados.nomeOuRazao
+      if (dados.telefone !== undefined)    campos.telefone     = dados.telefone
+      if (dados.celular !== undefined)     campos.celular      = dados.celular
+      if (Object.keys(campos).length) await this.prisma.clientePF.update({ where: { clienteId: cliente.id }, data: campos })
     }
 
     if (dados.endereco) {

@@ -243,6 +243,10 @@ model ClientePF {
   cpf            String
   rg             String?
   dataNascimento DateTime?
+  /// Contato do titular PF (o site pede o celular no cadastro). Opcionais:
+  /// o `db push` só acrescenta as colunas, sem mexer nos dados (ACORDO D-32).
+  telefone       String?
+  celular        String?
 
   cliente Cliente @relation(fields: [clienteId], references: [id], onDelete: Cascade)
 
