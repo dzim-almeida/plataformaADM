@@ -11,7 +11,7 @@
  * COMO RODAR (na raiz do projeto, ex.: na VPS):
  *
  *   CLIENTE_EMAIL="aalanallvesgt@gmail.com" CLIENTE_SENHA="SuaSenhaAqui" \
- *     npx dotenv -e apps/server/.env -- tsx scripts/definir-senha-cliente.ts
+ *     npx dotenv -e apps/server/.env -- tsx scripts/licenca/definir-senha-cliente.ts
  *
  * Se o cliente JÁ tiver senha e você quiser sobrescrever mesmo assim, adicione:
  *   FORCAR=1

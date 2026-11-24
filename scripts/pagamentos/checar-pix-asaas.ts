@@ -14,10 +14,10 @@
  *
  * COMO RODAR (na VPS, na raiz do projeto):
  *
- *   npx dotenv -e apps/server/.env -- tsx scripts/checar-pix-asaas.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/checar-pix-asaas.ts
  *
  * Para olhar uma cobrança específica:
- *   COBRANCA_ID=<uuid> npx dotenv -e apps/server/.env -- tsx scripts/checar-pix-asaas.ts
+ *   COBRANCA_ID=<uuid> npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/checar-pix-asaas.ts
  * ============================================================================
  */
 import { readFileSync } from 'fs'

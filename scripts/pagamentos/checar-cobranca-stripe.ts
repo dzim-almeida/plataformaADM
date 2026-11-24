@@ -11,11 +11,11 @@
  * NÃO altera nada. Só lê do Stripe e do banco.
  *
  * COMO RODAR (na raiz do projeto):
- *   npx dotenv -e apps/server/.env -- tsx scripts/checar-cobranca-stripe.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/checar-cobranca-stripe.ts
  *
  * Opcional: filtrar por e-mail do cliente:
  *   CLIENTE_EMAIL="aalanallvesgt@gmail.com" \
- *     npx dotenv -e apps/server/.env -- tsx scripts/checar-cobranca-stripe.ts
+ *     npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/checar-cobranca-stripe.ts
  * ============================================================================
  */
 import { prisma } from '@startbig/database'

@@ -15,10 +15,10 @@
  *      marca status INATIVO e diz quantas licenças seguram a exclusão.
  *
  * RODAR (relatório, não muda nada):
- *   npx dotenv -e apps/server/.env -- tsx prisma/limpar-planos-teste.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/planos/limpar-planos-teste.ts
  *
  * RODAR (executando de verdade):
- *   CONFIRMAR=sim npx dotenv -e apps/server/.env -- tsx prisma/limpar-planos-teste.ts
+ *   CONFIRMAR=sim npx dotenv -e apps/server/.env -- tsx scripts/planos/limpar-planos-teste.ts
  *
  * Opcional: PLANOS="Plano Teste,Plano Teste Diário" para mudar a lista de alvos.
  */
@@ -122,7 +122,7 @@ async function main() {
 
   console.log('─'.repeat(70))
   if (!executar)
-    console.log('Nada foi alterado. Para executar: CONFIRMAR=sim npx dotenv -e apps/server/.env -- tsx prisma/limpar-planos-teste.ts')
+    console.log('Nada foi alterado. Para executar: CONFIRMAR=sim npx dotenv -e apps/server/.env -- tsx scripts/planos/limpar-planos-teste.ts')
 }
 
 main()

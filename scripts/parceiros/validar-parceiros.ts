@@ -4,7 +4,7 @@
  * Rodar DEPOIS do `npx prisma db push`, e de preferência NA VPS, que é onde
  * mora o banco de produção.
  *
- *   npx dotenv -e apps/server/.env -- tsx prisma/validar-parceiros.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/parceiros/validar-parceiros.ts
  *
  * O que ele faz:
  *   1. Confere que as tabelas existem e responde quantas linhas há em cada uma.

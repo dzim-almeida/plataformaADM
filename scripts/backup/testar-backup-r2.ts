@@ -18,7 +18,7 @@
  *   npm run test:r2
  * ============================================================================
  */
-import { StorageService } from '../apps/server/src/integracoes/storage/storage.service'
+import { StorageService } from '../../apps/server/src/integracoes/storage/storage.service'
 
 const PREFIXO = '_smoke-test/'
 const CHAVE   = `${PREFIXO}teste.zip`

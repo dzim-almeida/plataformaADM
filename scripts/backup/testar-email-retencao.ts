@@ -14,7 +14,7 @@
  *   npm run backup:testar-email -- seu@email.com
  * ============================================================================
  */
-import { EmailService } from '../apps/server/src/integracoes/email/email.service'
+import { EmailService } from '../../apps/server/src/integracoes/email/email.service'
 
 async function main() {
   const email = process.argv[2]

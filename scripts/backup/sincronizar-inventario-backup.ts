@@ -23,10 +23,10 @@
  * COMO RODAR (na VPS, na raiz do projeto):
  *
  *   # ver o que faria, sem gravar:
- *   SIMULAR=1 npx dotenv -e apps/server/.env -- tsx scripts/sincronizar-inventario-backup.ts
+ *   SIMULAR=1 npx dotenv -e apps/server/.env -- tsx scripts/backup/sincronizar-inventario-backup.ts
  *
  *   # aplicar:
- *   npx dotenv -e apps/server/.env -- tsx scripts/sincronizar-inventario-backup.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/backup/sincronizar-inventario-backup.ts
  * ============================================================================
  */
 import { prisma, marcarBackupFalhou } from '@startbig/database'

@@ -5,7 +5,7 @@
  *   PLANO_NOME="Plano Teste Diário" \
  *   CAMPO="mensal" \
  *   PRICE_ID="price_1TsoO8FuTAGh0hX5F65PmBmS" \
- *     npx dotenv -e apps/server/.env -- tsx scripts/apontar-price-plano.ts
+ *     npx dotenv -e apps/server/.env -- tsx scripts/planos/apontar-price-plano.ts
  *
  * Alternativa: em vez de PLANO_NOME, use PLANO_ID="<uuid>".
  * CAMPO aceita: mensal | trimestral | anual

@@ -17,7 +17,7 @@
  *
  * COMO RODAR (na VPS, na raiz do projeto):
  *
- *   npx dotenv -e apps/server/.env -- tsx scripts/checar-elos-backup.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/backup/checar-elos-backup.ts
  * ============================================================================
  */
 import { prisma } from '@startbig/database'

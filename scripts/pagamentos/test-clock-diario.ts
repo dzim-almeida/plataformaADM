@@ -8,7 +8,7 @@
  *
  * RODAR:
  *   LICENCA_ID="<uuid-da-licenca>" DIAS="1" \
- *     npx dotenv -e apps/server/.env -- tsx scripts/test-clock-diario.ts
+ *     npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/test-clock-diario.ts
  */
 import Stripe from 'stripe'
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string)

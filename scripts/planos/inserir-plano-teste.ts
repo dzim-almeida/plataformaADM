@@ -3,7 +3,7 @@
  * NÃO chama o Stripe — só o banco. Idempotente (pode rodar de novo sem duplicar nada).
  *
  * Rodar (depois de reativar o Supabase):
- *   npx dotenv -e apps/server/.env -- tsx prisma/inserir-plano-teste.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/planos/inserir-plano-teste.ts
  */
 import { prisma, findPlanoByNome, criarPlano, updatePlano } from '@startbig/database'
 

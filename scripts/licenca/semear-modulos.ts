@@ -18,10 +18,10 @@
  *
  * COMO RODAR (na raiz do projeto):
  *
- *   npx dotenv -e apps/server/.env -- tsx scripts/semear-modulos.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/licenca/semear-modulos.ts
  *
  * Para ver o que faria sem gravar nada:
- *   SIMULAR=1 npx dotenv -e apps/server/.env -- tsx scripts/semear-modulos.ts
+ *   SIMULAR=1 npx dotenv -e apps/server/.env -- tsx scripts/licenca/semear-modulos.ts
  * ============================================================================
  */
 import { prisma } from '@startbig/database'

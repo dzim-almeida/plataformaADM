@@ -27,7 +27,7 @@
  *
  * COMO RODAR (na raiz do projeto):
  *
- *   npx dotenv -e apps/server/.env -- tsx scripts/auditar-modulos.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/licenca/auditar-modulos.ts
  * ============================================================================
  */
 import { prisma, modulosDaLicenca, modulosBase } from '@startbig/database'

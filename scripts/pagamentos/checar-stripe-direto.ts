@@ -4,7 +4,7 @@
  * cobrança, o status e as faturas/cobranças recentes — pra ver se o cartão está
  * sendo cobrado no ciclo esperado (ex.: diariamente num teste).
  *
- * RODAR:  npx dotenv -e apps/server/.env -- tsx scripts/checar-stripe-direto.ts
+ * RODAR:  npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/checar-stripe-direto.ts
  * Filtrar por e-mail (opcional): CLIENTE_EMAIL="..." antes do comando.
  */
 import Stripe from 'stripe'

@@ -118,7 +118,7 @@ export default function ModulosPage() {
           <Boxes size={26} className="mx-auto text-slate-700 mb-2" />
           <p className="text-sm text-slate-500">Catálogo vazio.</p>
           <p className="text-[11px] text-slate-600 mt-1">
-            Rode <code className="text-slate-500">scripts/semear-modulos.ts</code> para criar os módulos iniciais.
+            Rode <code className="text-slate-500">scripts/licenca/semear-modulos.ts</code> para criar os módulos iniciais.
           </p>
         </div>
       )}

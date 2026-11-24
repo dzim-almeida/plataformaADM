@@ -8,7 +8,7 @@
  * e vira BadRequestException que só aparece no painel.
  *
  * RODAR NA VPS:
- *   npx dotenv -e apps/server/.env -- tsx scripts/checar-planos-stripe.ts
+ *   npx dotenv -e apps/server/.env -- tsx scripts/pagamentos/checar-planos-stripe.ts
  */
 import Stripe from 'stripe'
 import { prisma } from '@startbig/database'

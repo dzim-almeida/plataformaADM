@@ -16,10 +16,10 @@
     "db:push": "dotenv -e apps/server/.env -- prisma db push",
     "db:generate": "prisma generate",
     "db:seed": "dotenv -e apps/server/.env -- tsx prisma/seed.ts",
-    "test:r2": "dotenv -e apps/server/.env -- tsx scripts/testar-backup-r2.ts",
-    "backup:simular": "dotenv -e apps/server/.env -- tsx scripts/simular-limpeza-backup.ts",
-    "backup:testar-email": "dotenv -e apps/server/.env -- tsx scripts/testar-email-retencao.ts",
-    "fiscal:censo": "dotenv -e apps/server/.env -- tsx scripts/censo-fiscal.ts",
+    "test:r2": "dotenv -e apps/server/.env -- tsx scripts/backup/testar-backup-r2.ts",
+    "backup:simular": "dotenv -e apps/server/.env -- tsx scripts/backup/simular-limpeza-backup.ts",
+    "backup:testar-email": "dotenv -e apps/server/.env -- tsx scripts/backup/testar-email-retencao.ts",
+    "fiscal:censo": "dotenv -e apps/server/.env -- tsx scripts/fiscal/censo-fiscal.ts",
     "deploy": "git pull && npm install && npm run db:push && npm run build && pm2 restart api web --update-env"
   },
   "prisma": {

@@ -25,8 +25,8 @@
  * para sempre. Inventário e bucket saem daqui zerados juntos, ou nenhum dos dois.
  *
  * COMO RODAR (na VPS, onde estão o banco e o .env de produção):
- *   npx tsx scripts/limpar-backups-para-cadeia.ts            # simulação
- *   npx tsx scripts/limpar-backups-para-cadeia.ts --executar # apaga de verdade
+ *   npx tsx scripts/backup/limpar-backups-para-cadeia.ts            # simulação
+ *   npx tsx scripts/backup/limpar-backups-para-cadeia.ts --executar # apaga de verdade
  * ============================================================================
  */
 import * as dotenv from 'dotenv'

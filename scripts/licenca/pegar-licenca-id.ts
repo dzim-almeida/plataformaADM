@@ -1,8 +1,8 @@
 /**
  * Imprime o licencaId a partir do e-mail do cliente OU da chave de ativação.
  * RODAR na VPS:
- *   CLIENTE_EMAIL="bigtec07@gmail.com" npx dotenv -e apps/server/.env -- tsx scripts/pegar-licenca-id.ts
- *   CHAVE="START-25CBE80A"            npx dotenv -e apps/server/.env -- tsx scripts/pegar-licenca-id.ts
+ *   CLIENTE_EMAIL="bigtec07@gmail.com" npx dotenv -e apps/server/.env -- tsx scripts/licenca/pegar-licenca-id.ts
+ *   CHAVE="START-25CBE80A"            npx dotenv -e apps/server/.env -- tsx scripts/licenca/pegar-licenca-id.ts
  */
 import { prisma } from '@startbig/database'
 

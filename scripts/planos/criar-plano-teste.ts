@@ -3,7 +3,7 @@
  * recorrentes do "Plano Teste" no Stripe e cadastra/atualiza o plano no nosso banco
  * com os Price IDs gerados.
  *
- * Rodar:  npx dotenv -e apps/server/.env -- tsx prisma/criar-plano-teste.ts
+ * Rodar:  npx dotenv -e apps/server/.env -- tsx scripts/planos/criar-plano-teste.ts
  */
 import Stripe from 'stripe'
 import { prisma, findPlanoByNome, criarPlano, updatePlano } from '@startbig/database'

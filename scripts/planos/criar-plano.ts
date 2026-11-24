@@ -12,10 +12,10 @@
  * script exige confirmação explícita, porque a partir daí o Price cobra de verdade.
  *
  * RODAR (teste, máquina local):
- *   PLANO=start npx dotenv -e apps/server/.env -- tsx prisma/criar-plano.ts
+ *   PLANO=start npx dotenv -e apps/server/.env -- tsx scripts/planos/criar-plano.ts
  *
  * RODAR (live, NA VPS, para gravar no banco de produção):
- *   PLANO=start CONFIRMAR_LIVE=sim npx dotenv -e apps/server/.env -- tsx prisma/criar-plano.ts
+ *   PLANO=start CONFIRMAR_LIVE=sim npx dotenv -e apps/server/.env -- tsx scripts/planos/criar-plano.ts
  *
  * Opcional: LIMITE_USUARIO=3 muda o limite de usuários do plano (padrão 1).
  *

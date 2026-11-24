@@ -20,7 +20,7 @@ import { ZodError } from 'zod'
  * Catálogo de módulos e concessões por licença (painel administrativo).
  *
  * O catálogo é só leitura: cadastrar módulo é operação de uma vez por produto
- * novo, resolvida pelo `scripts/semear-modulos.ts`. Uma tela de CRUD aqui seria
+ * novo, resolvida pelo `scripts/licenca/semear-modulos.ts`. Uma tela de CRUD aqui seria
  * uma tela a manter para algo que acontece uma vez por semestre.
  *
  * O que muda toda semana é a concessão avulsa — e essa tem endpoint próprio.
@@ -74,7 +74,7 @@ export class ModuloController {
 
   /**
    * Edita um módulo do catálogo. Criar módulo continua sendo trabalho do
-   * `scripts/semear-modulos.ts` — o que muda com o negócio é preço e status,
+   * `scripts/licenca/semear-modulos.ts` — o que muda com o negócio é preço e status,
    * não a existência do produto.
    */
   @Patch(':identificador')
