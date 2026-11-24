@@ -41,6 +41,26 @@ export const contratarExistenteSchema = z.object({
   meses:   z.number().int().refine(m => [1, 3, 12].includes(m), 'Período inválido — use 1, 3 ou 12.'),
 })
 
+/**
+ * O que a contratação do site manda para o cadastro: TUDO o que a pessoa
+ * preencheu (endereço, celular, dados de PJ), menos o que é só da compra.
+ *
+ * Antes, só nome, documento, e-mail, senha e telefones passavam: o endereço
+ * digitado no site se perdia, e o setup do app abria sem ele (bug achado no
+ * teste de homologação, 11/2026).
+ *
+ * Ficam de fora:
+ * - `planoId` e `meses`: são da cobrança, não do cadastro;
+ * - `hwid`: só o backend do servidor da loja informa o computador servidor,
+ *   nunca o navegador;
+ * - `fluxoConfirmacao`: é do cadastro pelo app (LIC-06); o site cria a conta na hora.
+ */
+export function cadastroDoSite(dados: z.infer<typeof contratarSchema>) {
+  // Desestruturação: separa os campos que NÃO vão; `cadastro` fica com o resto.
+  const { planoId: _planoId, meses: _meses, hwid: _hwid, fluxoConfirmacao: _fluxo, ...cadastro } = dados
+  return cadastro
+}
+
 @Injectable()
 export class ErpContratacaoService {
   private readonly logger = new Logger(ErpContratacaoService.name)
@@ -177,14 +197,7 @@ export class ErpContratacaoService {
     //    `criarContaComTrial` é o cadastro de antes da LIC-06: o site precisa
     //    da licença na hora para o checkout. O cadastro pelo app passou a
     //    exigir a confirmação do e-mail (decisão do usuário, 2026-11-19).
-    const cadastro = await this.dispositivoService.criarContaComTrial({
-      documento:   dados.documento,
-      nomeOuRazao: dados.nomeOuRazao,
-      email:       dados.email,
-      senha:       dados.senha,
-      telefone:    dados.telefone,
-      celular:     dados.celular,
-    })
+    const cadastro = await this.dispositivoService.criarContaComTrial(cadastroDoSite(dados))
 
     // O autoCadastro devolve os campos na raiz (msg, clienteId, licencaId, ...),
     // não dentro de `data`. Ler do lugar errado aqui criaria o cliente e falharia
