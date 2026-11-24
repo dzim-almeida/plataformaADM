@@ -1123,7 +1123,10 @@ export class DispositivoService {
             nomeCompleto: dados.nomeOuRazao,
             cpf: dados.documento,
             rg: dados.rg,
-            dataNascimento: dados.dataNascimento ? new Date(dados.dataNascimento) : undefined
+            dataNascimento: dados.dataNascimento ? new Date(dados.dataNascimento) : undefined,
+            // Contato do titular PF: antes se perdia, porque só a PJ tinha onde guardar.
+            telefone: dados.telefone,
+            celular: dados.celular
           } },
           ...enderecoData
         }

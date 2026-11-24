@@ -77,4 +77,13 @@ describe('contratação pelo site guarda o cadastro completo', () => {
     assert.equal(tabelas.endereco[0].numero, '123')
     assert.equal(tabelas.clientePJ[0].celular, '(85) 99999-0000')
   })
+
+  it('conta com CPF também guarda o celular (na própria PF)', async () => {
+    await servicoDeCadastro().criarContaComTrial(cadastroDoSite(corpoDoSite({
+      documento: '52998224725', nomeOuRazao: 'Maria da Silva',   // CPF válido de teste
+    })))
+
+    assert.equal(tabelas.clientePF[0].celular, '(85) 99999-0000')
+    assert.equal(tabelas.endereco[0].numero, '123')
+  })
 })

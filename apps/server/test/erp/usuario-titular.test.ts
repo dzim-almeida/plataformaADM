@@ -118,6 +118,28 @@ describe('LIC-06 — dados do titular (GET e PUT /erp/usuario/titular)', () => {
     assert.equal(tabelas.endereco[0].tipo, 'PRINCIPAL')
   })
 
+  it('titular PF devolve o celular e o telefone guardados na própria PF', async () => {
+    titularPF()
+    tabelas.clientePF[0].celular  = '(85) 98888-0000'
+    tabelas.clientePF[0].telefone = '(85) 3111-0000'
+
+    const r = await servico.lerTitular(LICENCA)
+
+    assert.equal(r.celular, '(85) 98888-0000')
+    assert.equal(r.telefone, '(85) 3111-0000')
+  })
+
+  it('PUT de titular PF grava os telefones na PF', async () => {
+    titularPF()
+
+    const r = await servico.atualizarTitular(LICENCA, { celular: '(85) 97777-0000', telefone: '(85) 3222-0000' })
+
+    assert.equal(tabelas.clientePF[0].celular, '(85) 97777-0000')
+    assert.equal(tabelas.clientePF[0].telefone, '(85) 3222-0000')
+    assert.equal(tabelas.clientePF[0].nomeCompleto, 'Maria Antiga')   // o nome não mudou
+    assert.equal(r.celular, '(85) 97777-0000')
+  })
+
   it('CT-27: PUT com campo inválido → 400 com detalhes', async () => {
     titularPJ()
 
