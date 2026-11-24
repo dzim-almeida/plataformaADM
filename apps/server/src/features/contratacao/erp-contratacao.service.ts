@@ -18,7 +18,7 @@ import { Injectable, BadRequestException, NotFoundException, UnauthorizedExcepti
 import { ZodError, z } from 'zod'
 import bcrypt from 'bcryptjs'
 import { prisma, findPlanoById, updateLicenca } from '@startbig/database'
-import { DispositivoService, autoCadastroSchema } from '../dispositivos/dispositivo.service'
+import { LicencaService, autoCadastroSchema } from '../licenca/licenca.service'
 import { FinanceiroService } from '../financeiro/financeiro.service'
 import { PlanoService } from '../plano/plano.service'
 import { montarOpcoes } from '../plano/plano.precos'
@@ -46,7 +46,7 @@ export class ErpContratacaoService {
   private readonly logger = new Logger(ErpContratacaoService.name)
 
   constructor(
-    private readonly dispositivoService: DispositivoService,
+    private readonly licencaService: LicencaService,
     private readonly financeiroService:  FinanceiroService,
     private readonly planoService:       PlanoService,
   ) {}
@@ -174,7 +174,7 @@ export class ErpContratacaoService {
 
     // 1. Cria cliente + licença (trial de 14 dias). Os dias do trial não se
     //    perdem: a renovação soma o período pago por cima do que ainda resta.
-    const cadastro = await this.dispositivoService.autoCadastro({
+    const cadastro = await this.licencaService.autoCadastro({
       documento:   dados.documento,
       nomeOuRazao: dados.nomeOuRazao,
       email:       dados.email,

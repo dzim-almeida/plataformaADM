@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { camposFaltandoParaCriar, emitenteParaCadastroFocus } from '../../src/common/focus-nfe/focus-empresa.mapper'
+import { camposFaltandoParaCriar, emitenteParaCadastroFocus } from '../../src/integracoes/focus-nfe/focus-empresa.mapper'
 
 /** O bloco `emitente{}` exatamente como o ERP monta para as notas. */
 const EMITENTE = {

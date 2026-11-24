@@ -47,7 +47,7 @@ import {
   urlDownloadBackupSchema,
   BACKUP_TAMANHO_MAX_BYTES,
 } from '@startbig/schemas'
-import { StorageService, TTL_UPLOAD_SEGUNDOS } from '../../common/storage/storage.service'
+import { StorageService, TTL_UPLOAD_SEGUNDOS } from '../../integracoes/storage/storage.service'
 
 /// Cobre o backup automático + um manual do usuário no mesmo dia. Mais que isso
 /// não é uso legítimo, é loop com bug — e loop com bug na nuvem é fatura.

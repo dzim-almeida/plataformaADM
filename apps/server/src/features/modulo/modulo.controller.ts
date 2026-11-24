@@ -13,7 +13,7 @@ import {
 } from '@startbig/database'
 import { concederModuloExtraSchema, editarModuloSchema } from '@startbig/schemas'
 import { Roles } from '../../core/decorators/roles.decorator'
-import { StripeService } from '../../common/stripe/stripe.service'
+import { StripeService } from '../../integracoes/stripe/stripe.service'
 import { ZodError } from 'zod'
 
 /**

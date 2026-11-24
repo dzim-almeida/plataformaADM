@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, HttpException, HttpStatus } from '@nestjs/common'
 import { prisma, MODULO_NFE } from '@startbig/database'
-import { FocusNfeService } from '../../common/focus-nfe/focus-nfe.service'
+import { FocusNfeService } from '../../integracoes/focus-nfe/focus-nfe.service'
 import { AMBIENTE_PRODUCAO, TipoDocumentoEmissivel, RECURSO_FOCUS, numeroOuNulo, nomeAmbiente, urlAbsolutaFocus, ResultadoNota, mapResultado, getEmpresaConfig } from './fiscal-comum'
 import { FiscalCotaService } from './fiscal-cota.service'
 import { FiscalFranquiaService } from './fiscal-franquia.service'

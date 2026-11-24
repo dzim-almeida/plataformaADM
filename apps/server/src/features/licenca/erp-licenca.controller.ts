@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Body } from '@nestjs/common'
-import { DispositivoService } from '../dispositivos/dispositivo.service'
+import { LicencaService } from './licenca.service'
 import { ErpAuthService } from './erp-auth.service'
 import { Public } from '../../core/decorators/public.decorator'
 
@@ -7,37 +7,37 @@ import { Public } from '../../core/decorators/public.decorator'
 @Controller('erp')
 export class ErpLicencaController {
   constructor(
-    private readonly dispositivoService: DispositivoService,
+    private readonly licencaService: LicencaService,
     private readonly erpAuthService:     ErpAuthService,
   ) {}
 
   @Get('chave-publica')
   getChavePublica() {
-    return { publicKey: this.dispositivoService.getPublicKey() }
+    return { publicKey: this.licencaService.getPublicKey() }
   }
 
   @Post('auto-cadastro')
   autoCadastro(@Body() body: unknown) {
-    return this.dispositivoService.autoCadastro(body)
+    return this.licencaService.autoCadastro(body)
   }
 
   @Post('conectar')
   conectar(@Body() body: unknown) {
-    return this.dispositivoService.conectar(body)
+    return this.licencaService.conectar(body)
   }
 
   @Post('desconectar')
   desconectar(@Body() body: unknown) {
-    return this.dispositivoService.desconectar(body)
+    return this.licencaService.desconectar(body)
   }
 
   @Post('heartbeat')
   heartbeat(@Body() body: unknown) {
-    return this.dispositivoService.heartbeat(body)
+    return this.licencaService.heartbeat(body)
   }
 
   @Post('validar')
   validar(@Body() body: unknown) {
-    return this.dispositivoService.validar(body)
+    return this.licencaService.validar(body)
   }
 }

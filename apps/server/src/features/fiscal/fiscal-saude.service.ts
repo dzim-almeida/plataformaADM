@@ -1,6 +1,6 @@
 import { Injectable, Logger, HttpException } from '@nestjs/common'
 import { prisma, MODULO_NFCE, MODULO_NFSE } from '@startbig/database'
-import { FocusNfeService } from '../../common/focus-nfe/focus-nfe.service'
+import { FocusNfeService } from '../../integracoes/focus-nfe/focus-nfe.service'
 import { tokenDeEmissao } from './fiscal-comum'
 
 /**

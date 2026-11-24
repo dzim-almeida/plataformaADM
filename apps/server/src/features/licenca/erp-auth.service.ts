@@ -2,7 +2,7 @@ import { Injectable, BadRequestException, HttpException, HttpStatus } from '@nes
 import { randomUUID } from 'crypto'
 import { ZodError, z } from 'zod'
 import bcrypt from 'bcryptjs'
-import { DispositivoService } from '../dispositivos/dispositivo.service'
+import { LicencaService } from './licenca.service'
 
 const loginSchema = z.object({
   email: z.string().email('E-mail inválido.'),
@@ -19,7 +19,7 @@ const primeiroAcessoSchema = z.object({
 
 @Injectable()
 export class ErpAuthService {
-  constructor(private readonly dispositivoService: DispositivoService) {}
+  constructor(private readonly licencaService: LicencaService) {}
 
   private parseBody<T>(schema: { parse: (x: unknown) => T }, body: unknown): T {
     try {
@@ -82,7 +82,7 @@ export class ErpAuthService {
     // 400 genérico que o conectar daria.
     const agora = new Date()
     const utilizavel = (l: { status: string; dataVencimento: Date | null; carenciaAte: Date | null }) =>
-      this.dispositivoService.carenciaVigente(l) ||
+      this.licencaService.carenciaVigente(l) ||
       (l.status === 'ATIVA' && (!l.dataVencimento || l.dataVencimento > agora))
 
     const licenca = cliente.dispositivos.find(utilizavel)
@@ -102,7 +102,7 @@ export class ErpAuthService {
     // servidor: só o backend do servidor da loja chama este login, com o HWID
     // dele — é o que grava (ou troca) o servidor da licença. Sem HWID real não há
     // o que gravar.
-    const resultado = await this.dispositivoService.conectar(
+    const resultado = await this.licencaService.conectar(
       {
         chave:          licenca.chaveAtivacao,
         hwid:           dados.hwid ?? `login-${randomUUID()}`,

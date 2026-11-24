@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, HttpException, HttpStatus } from '@nestjs/common'
 import { prisma, MODULO_NFE, MODULO_NFCE, MODULO_NFSE } from '@startbig/database'
-import { FocusNfeService } from '../../common/focus-nfe/focus-nfe.service'
-import { camposFaltandoParaCriar, emitenteParaCadastroFocus, EmitenteErp } from '../../common/focus-nfe/focus-empresa.mapper'
-import { cifraDisponivel, cifrar } from '../../common/cripto/segredo-fiscal'
+import { FocusNfeService } from '../../integracoes/focus-nfe/focus-nfe.service'
+import { camposFaltandoParaCriar, emitenteParaCadastroFocus, EmitenteErp } from '../../integracoes/focus-nfe/focus-empresa.mapper'
+import { cifraDisponivel, cifrar } from '../../core/cripto/segredo-fiscal'
 import { AMBIENTE_PRODUCAO, tokenDeEmissao, nomeAmbiente, buscarEmpresaConfig } from './fiscal-comum'
 import { FiscalMunicipioService } from './fiscal-municipio.service'
 

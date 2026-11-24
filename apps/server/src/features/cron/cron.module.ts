@@ -15,7 +15,7 @@
  */
 import { Module } from '@nestjs/common'
 import { CronService } from './cron.service'
-import { EmailModule } from '../../core/email/email.module'
+import { EmailModule } from '../../integracoes/email/email.module'
 
 @Module({
   imports: [EmailModule],

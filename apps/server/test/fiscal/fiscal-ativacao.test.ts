@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'crypto'
 import { tabelas } from '../apoio/prisma-falso'
 import { prepararCenario, falhaHttp, ehHttp, LICENCA, CNPJ } from '../apoio/cenario-fiscal'
-import { decifrar } from '../../src/common/cripto/segredo-fiscal'
+import { decifrar } from '../../src/core/cripto/segredo-fiscal'
 
 const EMITENTE = {
   cnpj: CNPJ,

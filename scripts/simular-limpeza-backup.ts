@@ -17,8 +17,8 @@
  * ============================================================================
  */
 import { CronService } from '../apps/server/src/features/cron/cron.service'
-import { EmailService } from '../apps/server/src/core/email/email.service'
-import { StorageService } from '../apps/server/src/common/storage/storage.service'
+import { EmailService } from '../apps/server/src/integracoes/email/email.service'
+import { StorageService } from '../apps/server/src/integracoes/storage/storage.service'
 import { prisma } from '@startbig/database'
 
 async function main() {

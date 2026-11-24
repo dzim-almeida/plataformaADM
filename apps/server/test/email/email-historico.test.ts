@@ -6,8 +6,8 @@
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { NotFoundException } from '@nestjs/common'
-import { EmailService } from '../../src/core/email/email.service'
-import { EmailHistoricoService } from '../../src/features/email/email-historico.service'
+import { EmailService } from '../../src/integracoes/email/email.service'
+import { EmailHistoricoService } from '../../src/features/email-historico/email-historico.service'
 import { reiniciarBanco, tabelas, prismaFalso } from '../apoio/prisma-falso'
 
 const fetchOriginal = globalThis.fetch

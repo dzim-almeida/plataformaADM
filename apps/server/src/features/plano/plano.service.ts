@@ -28,7 +28,7 @@ import {
   definirModulosDoPlano,
 } from '@startbig/database'
 import { criarPlanoSchema, editarPlanoSchema } from '@startbig/schemas'
-import { StripeService } from '../../common/stripe/stripe.service'
+import { StripeService } from '../../integracoes/stripe/stripe.service'
 import { montarOpcoes } from './plano.precos'
 
 @Injectable()

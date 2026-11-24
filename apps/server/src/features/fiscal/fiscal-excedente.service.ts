@@ -1,8 +1,8 @@
 import { Injectable, Logger, Optional } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { prisma } from '@startbig/database'
-import { StripeService, METADATA_EXCEDENTE_FISCAL } from '../../common/stripe/stripe.service'
-import { EmailService } from '../../core/email/email.service'
+import { StripeService, METADATA_EXCEDENTE_FISCAL } from '../../integracoes/stripe/stripe.service'
+import { EmailService } from '../../integracoes/email/email.service'
 import { AMBIENTE_PRODUCAO, competenciaAtual } from './fiscal-comum'
 import { FRANQUIA_NOTAS, PRECO_EXCEDENTE, FRANQUIA_VALE_DESDE } from './fiscal-franquia.service'
 

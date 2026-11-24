@@ -21,7 +21,7 @@ import {
   cicloAtual,
   registrarLog,
 } from '@startbig/database'
-import { StorageService } from '../../common/storage/storage.service'
+import { StorageService } from '../../integracoes/storage/storage.service'
 
 /// Depois de quantas horas sem backup uma licença ativa é considerada atrasada.
 /// 36h e não 24h porque o backup diário do ERP pode atrasar algumas horas

@@ -10,10 +10,10 @@ import { FiscalEmissaoService } from './fiscal-emissao.service'
 import { FiscalCotaService } from './fiscal-cota.service'
 import { FiscalOnboardingService } from './fiscal-onboarding.service'
 import { FiscalSaudeService } from './fiscal-saude.service'
-import { DispositivoModule } from '../dispositivos/dispositivo.module'
 
+// Não importa mais o LicencaModule: ele só estava aqui para o ErpLicencaGuard,
+// que agora lê a chave direto de core/config e não precisa de nenhum service.
 @Module({
-  imports:     [DispositivoModule],
   controllers: [FiscalController, FiscalNfceController, FiscalNfseController, FiscalConfigController, FiscalAdminController, FiscalSaudeController, FiscalExcedenteController, FiscalMunicipioController, FiscalRotaNfseController],
   providers:   [FiscalOnboardingService, FiscalEmissaoService, FiscalNfseService, FiscalMunicipioService, FiscalCotaService, FiscalSaudeService, FiscalFranquiaService, FiscalExcedenteService],
   exports:     [FiscalOnboardingService, FiscalEmissaoService, FiscalCotaService],

@@ -44,10 +44,10 @@ import {
   prisma,
 } from '@startbig/database'
 import { confirmarPagamentoSchema, gerarCobrancaSchema } from '@startbig/schemas'
-import { EmailService } from '../../core/email/email.service'
-import { StripeService } from '../../common/stripe/stripe.service'
+import { EmailService } from '../../integracoes/email/email.service'
+import { StripeService } from '../../integracoes/stripe/stripe.service'
 import { ParceiroService } from '../parceiro/parceiro.service'
-import { NotificacaoService } from '../../common/notificacao/notificacao.service'
+import { NotificacaoService } from '../../integracoes/notificacao/notificacao.service'
 import { montarOpcoes } from '../plano/plano.precos'
 
 /**

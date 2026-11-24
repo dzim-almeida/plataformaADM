@@ -1,19 +1,25 @@
 /**
  * ============================================================================
  * NOME DO ARQUIVO: backup.module.ts
- * MÓDULO: BACKUP (ADMIN)
+ * MÓDULO: BACKUP
  * ============================================================================
  * O QUE ESTE ARQUIVO FAZ:
- * Atua como a "caixa de fios" (Wiring) do módulo de BACKUP do painel. Ele agrupa
- * os Controllers e Services deste módulo e diz ao NestJS como eles se conectam.
+ * Junta os dois lados do backup em nuvem:
+ * - backup.controller.ts     → painel consulta os backups (/backups)
+ * - erp-backup.controller.ts → ERP pede URL de envio/download (/erp/backup)
+ *
+ * O StorageService (Cloudflare R2) não aparece em `imports` porque o módulo
+ * dele é @Global: fica disponível para todo o servidor.
  * ============================================================================
  */
 import { Module } from '@nestjs/common'
-import { BackupController } from './backup.controller'
-import { BackupService } from './backup.service'
+import { BackupController }    from './backup.controller'
+import { BackupService }       from './backup.service'
+import { ErpBackupController } from './erp-backup.controller'
+import { ErpBackupService }    from './erp-backup.service'
 
 @Module({
-  controllers: [BackupController],
-  providers:   [BackupService],
+  controllers: [BackupController, ErpBackupController],
+  providers:   [BackupService, ErpBackupService],
 })
 export class BackupModule {}

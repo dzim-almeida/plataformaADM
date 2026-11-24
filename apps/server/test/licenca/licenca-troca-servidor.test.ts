@@ -8,8 +8,8 @@ import { describe, it, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import bcrypt from 'bcryptjs'
 import { HttpException } from '@nestjs/common'
-import { DispositivoService } from '../../src/features/dispositivos/dispositivo.service'
-import { ErpAuthService } from '../../src/features/erp/erp-auth.service'
+import { LicencaService } from '../../src/features/licenca/licenca.service'
+import { ErpAuthService } from '../../src/features/licenca/erp-auth.service'
 import { reiniciarBanco, tabelas } from '../apoio/prisma-falso'
 
 const LICENCA = '6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b' // o heartbeatSchema exige uuid
@@ -61,7 +61,7 @@ const recusa = (status: number, codigo: string) => (e: unknown) => {
 function montar() {
   const emails: any[] = []
   const emailFalso = { enviarAlertaTrocaDispositivo: async (d: any) => { emails.push(d) } }
-  const dispositivos = new DispositivoService(emailFalso as any, {} as any)
+  const dispositivos = new LicencaService(emailFalso as any, {} as any)
   const auth = new ErpAuthService(dispositivos)
   const login = (hwid?: string, extra: Record<string, any> = {}) =>
     auth.login({ email: EMAIL, senha: SENHA, hwid, ...extra })

@@ -1,10 +1,10 @@
 /**
  * ============================================================================
- * NOME DO ARQUIVO: dispositivo.controller.ts
- * MÓDULO: DISPOSITIVOS
+ * NOME DO ARQUIVO: licenca.controller.ts
+ * MÓDULO: LICENÇA
  * ============================================================================
  * O QUE ESTE ARQUIVO FAZ:
- * Atua como o "garçom" da API para o módulo de DISPOSITIVOS. Ele recebe as
+ * Atua como o "garçom" da API para o módulo de LICENÇA. Ele recebe as
  * requisições HTTP (GET, POST, PATCH, DELETE) vindas do frontend ou do ERP
  * e as direciona para o Service correspondente processar.
  * 
@@ -15,29 +15,29 @@
  * ============================================================================
  */
 import { Controller, Post, Patch, Get, Delete, Param, Body, Query } from '@nestjs/common'
-import { DispositivoService } from './dispositivo.service'
+import { LicencaService } from './licenca.service'
 import { Public } from '../../core/decorators/public.decorator'
 
 @Controller('licenca')
-export class DispositivoController {
-  constructor(private readonly dispositivoService: DispositivoService) {}
+export class LicencaController {
+  constructor(private readonly licencaService: LicencaService) {}
 
   // Ordem importa: rotas fixas antes de parâmetros dinâmicos
   @Public()
   @Get('chave-publica')
   getChavePublica() {
-    return { publicKey: this.dispositivoService.getPublicKey() }
+    return { publicKey: this.licencaService.getPublicKey() }
   }
 
   @Get('planos')
   async listarPlanos() {
-    const data = await this.dispositivoService.listarPlanos()
+    const data = await this.licencaService.listarPlanos()
     return { data }
   }
 
   @Get('alertas')
   async alertasVencimento(@Query('dias') dias?: string) {
-    const data = await this.dispositivoService.listarAlertasVencimento(dias ? Number(dias) : 30)
+    const data = await this.licencaService.listarAlertasVencimento(dias ? Number(dias) : 30)
     return { data }
   }
 
@@ -47,114 +47,114 @@ export class DispositivoController {
     @Query('isTrial') isTrial?: string,
     @Query('q')       q?: string,
   ) {
-    const data = await this.dispositivoService.listarTodas({ status, isTrial, q })
+    const data = await this.licencaService.listarTodas({ status, isTrial, q })
     return { data }
   }
 
   @Post()
   async criar(@Body() body: unknown) {
-    return this.dispositivoService.criarLicenca(body)
+    return this.licencaService.criarLicenca(body)
   }
 
   @Get('cliente/:clienteId')
   async listarPorCliente(@Param('clienteId') clienteId: string) {
-    const data = await this.dispositivoService.buscarPorCliente(clienteId)
+    const data = await this.licencaService.buscarPorCliente(clienteId)
     return { data }
   }
 
   @Get(':id')
   async buscarPorId(@Param('id') id: string) {
-    const data = await this.dispositivoService.buscarPorId(id)
+    const data = await this.licencaService.buscarPorId(id)
     return { data }
   }
 
   @Delete(':id')
   async deletar(@Param('id') id: string) {
-    return this.dispositivoService.deletarLicenca(id)
+    return this.licencaService.deletarLicenca(id)
   }
 
   @Public()
   @Post('auto-cadastro')
   async autoCadastro(@Body() body: unknown) {
-    return this.dispositivoService.autoCadastro(body)
+    return this.licencaService.autoCadastro(body)
   }
 
   @Public()
   @Post('conectar')
   async conectar(@Body() body: unknown) {
-    return this.dispositivoService.conectar(body)
+    return this.licencaService.conectar(body)
   }
 
   @Public()
   @Post('desconectar')
   async desconectar(@Body() body: unknown) {
-    return this.dispositivoService.desconectar(body)
+    return this.licencaService.desconectar(body)
   }
 
   @Public()
   @Post('heartbeat')
   async heartbeat(@Body() body: unknown) {
-    return this.dispositivoService.heartbeat(body)
+    return this.licencaService.heartbeat(body)
   }
 
   @Public()
   @Post('validar')
   async validar(@Body() body: unknown) {
-    return this.dispositivoService.validar(body)
+    return this.licencaService.validar(body)
   }
 
   @Post(':id/renovar')
   async renovar(@Param('id') id: string, @Body() body: unknown) {
-    return this.dispositivoService.renovar(id, body)
+    return this.licencaService.renovar(id, body)
   }
 
   @Patch(':id/cortesia')
   async darCortesia(@Param('id') id: string, @Body() body: unknown) {
-    return this.dispositivoService.darCortesia(id, body)
+    return this.licencaService.darCortesia(id, body)
   }
 
   @Patch(':id/resetar-usuarios')
   async resetarUsuarios(@Param('id') id: string) {
-    return this.dispositivoService.resetarContadorUsuarios(id)
+    return this.licencaService.resetarContadorUsuarios(id)
   }
 
   @Patch(':id/adicionar-extra')
   async adicionarExtra(@Param('id') id: string) {
-    return this.dispositivoService.adicionarUsuarioExtra(id)
+    return this.licencaService.adicionarUsuarioExtra(id)
   }
 
   @Patch(':id/remover-extra')
   async removerExtra(@Param('id') id: string) {
-    return this.dispositivoService.removerUsuarioExtra(id)
+    return this.licencaService.removerUsuarioExtra(id)
   }
 
   @Patch(':id/bloquear')
   async bloquear(@Param('id') id: string) {
-    return this.dispositivoService.bloquear(id)
+    return this.licencaService.bloquear(id)
   }
 
   @Patch(':id/suspender')
   async suspender(@Param('id') id: string) {
-    return this.dispositivoService.suspender(id)
+    return this.licencaService.suspender(id)
   }
 
   @Patch(':id/revogar')
   async revogar(@Param('id') id: string) {
-    return this.dispositivoService.revogar(id)
+    return this.licencaService.revogar(id)
   }
 
   @Patch(':id/reativar')
   async reativar(@Param('id') id: string) {
-    return this.dispositivoService.reativar(id)
+    return this.licencaService.reativar(id)
   }
 
   @Patch(':id/trocar-dispositivo')
   async trocarDispositivo(@Param('id') id: string) {
-    return this.dispositivoService.trocarDispositivo(id)
+    return this.licencaService.trocarDispositivo(id)
   }
 
   @Patch(':id/trocar-plano')
   async trocarPlano(@Param('id') id: string, @Body() body: unknown) {
-    return this.dispositivoService.trocarPlano(id, body)
+    return this.licencaService.trocarPlano(id, body)
   }
 }

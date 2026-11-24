@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { HttpException } from '@nestjs/common'
-import { FocusNfeService } from '../../src/common/focus-nfe/focus-nfe.service'
+import { FocusNfeService } from '../../src/integracoes/focus-nfe/focus-nfe.service'
 import { instalarFetchFalso } from '../apoio/fetch-falso'
 
 const PRODUCAO = 1

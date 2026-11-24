@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { traduzirPayloadParaFocus } from '../../src/common/focus-nfe/focus-payload.mapper'
+import { traduzirPayloadParaFocus } from '../../src/integracoes/focus-nfe/focus-payload.mapper'
 
 /** 07/10/2026 01:30 UTC = 06/10/2026 22:30 em São Paulo — vira o dia em UTC. */
 const AGORA = new Date('2026-10-07T01:30:00Z')

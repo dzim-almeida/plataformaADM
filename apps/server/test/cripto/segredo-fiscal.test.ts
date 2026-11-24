@@ -1,7 +1,7 @@
 import { describe, it, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'crypto'
-import { cifraDisponivel, cifrar, decifrar } from '../../src/common/cripto/segredo-fiscal'
+import { cifraDisponivel, cifrar, decifrar } from '../../src/core/cripto/segredo-fiscal'
 
 const CHAVE = randomBytes(32).toString('base64')
 

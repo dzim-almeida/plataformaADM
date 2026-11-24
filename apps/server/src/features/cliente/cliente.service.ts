@@ -39,7 +39,7 @@ import {
 } from '@startbig/schemas'
 import { editarClientePF } from './pf/cliente-pf.service'
 import { editarClientePJ } from './pj/cliente-pj.service'
-import { EmailService } from '../../core/email/email.service'
+import { EmailService } from '../../integracoes/email/email.service'
 import { dominioDeEmailExiste } from '../../core/validators/email-dominio.validator'
 
 @Injectable()

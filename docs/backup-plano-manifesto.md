@@ -84,7 +84,7 @@ Endpoint novo. Separa **decidir** de **assinar**:
 **O `tamanhoBytes` não sai do `url-upload`.** Chegou a ser proposto trocá-lo pelo
 JSON; não dá. Ele entra na assinatura criptográfica da URL
 (`signableHeaders: new Set(['content-length'])`,
-[storage.service.ts:149](../apps/server/src/common/storage/storage.service.ts#L149)),
+[storage.service.ts:149](../apps/server/src/integracoes/storage/storage.service.ts#L149)),
 e é o que faz o bucket recusar qualquer corpo com tamanho diferente — a única
 coisa que impede um "backup de 30 MB" chegar como 4 GB. Precisa ser exato ao byte
 e existir **antes** da assinatura. Não é derivável do manifesto: o tamanho do zip
@@ -203,7 +203,7 @@ Está escrita na doc **e** sustenta uma decisão no código:
 
 > Em pedaço fechado o conteúdo é imutável de verdade, então checksum igual
 > significa mesmo "nada mudou".
-> — [erp-backup.service.ts:275](../apps/server/src/features/erp/erp-backup.service.ts#L275)
+> — [erp-backup.service.ts:275](../apps/server/src/features/backup/erp-backup.service.ts#L275)
 
 **É falsa.** O ERP tem botão de substituir foto de OS, e laudo pode ser reaberto.
 Um pedaço de maio pode mudar em julho.
@@ -245,8 +245,8 @@ Nenhuma bloqueia começar o trabalho do servidor.
 | # | Tarefa | Arquivos |
 |---|---|---|
 | 1 | Schema do `/avaliar` (Nível 1: `inventario`) | `packages/schemas/src/backup/backup.schema.ts` |
-| 2 | Rota `POST /erp/backup/avaliar` | `apps/server/src/features/erp/erp-backup.controller.ts` |
-| 3 | Lógica de decisão + `RECUSAR` + limiar por env | `apps/server/src/features/erp/erp-backup.service.ts` |
+| 2 | Rota `POST /erp/backup/avaliar` | `apps/server/src/features/backup/erp-backup.controller.ts` |
+| 3 | Lógica de decisão + `RECUSAR` + limiar por env | `apps/server/src/features/backup/erp-backup.service.ts` |
 | 4 | Guardar o inventário do último confirmado | `prisma/schema.prisma`, `packages/database/src/repositories/backup.repository.ts` |
 | 5 | Subir o limite de corpo para ~10 MB nas rotas de backup | `apps/server/src/main.ts` |
 | 6 | Correções na doc (seção 7) | `docs/erp-backup-contrato.md` |
@@ -291,7 +291,7 @@ Em [`erp-backup-contrato.md`](./erp-backup-contrato.md):
 5. **A.1 / D.1** — descrever `banco.zip` como contendo também os laudos, e
    `os-AAAA-MM.zip` como contendo fotos de OS **e** de laudo.
 6. Acrescentar o comentário no
-   [`ehPedacoFechado`](../apps/server/src/features/erp/erp-backup.service.ts#L215),
+   [`ehPedacoFechado`](../apps/server/src/features/backup/erp-backup.service.ts#L215),
    que hoje justifica o comportamento com a imutabilidade.
 
 ---

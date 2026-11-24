@@ -29,8 +29,8 @@ import {
   consultarCobrancaSchema,
   PERIODOS_EM_MESES,
 } from '@startbig/schemas'
-import { AsaasService, AsaasIndisponivelError } from '../../common/asaas/asaas.service'
-import { StripeService } from '../../common/stripe/stripe.service'
+import { AsaasService, AsaasIndisponivelError } from '../../integracoes/asaas/asaas.service'
+import { StripeService } from '../../integracoes/stripe/stripe.service'
 import { FinanceiroService } from '../financeiro/financeiro.service'
 import { RenovacaoCredencialService } from './renovacao-credencial.service'
 import { montarOpcoesComMetodos } from '../plano/plano.precos'

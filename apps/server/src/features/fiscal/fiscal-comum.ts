@@ -1,7 +1,7 @@
 import { NotFoundException, BadRequestException } from '@nestjs/common'
 import { prisma, MODULO_NFE, MODULO_NFCE } from '@startbig/database'
-import { RecursoFocus } from '../../common/focus-nfe/focus-nfe.service'
-import { decifrar } from '../../common/cripto/segredo-fiscal'
+import { RecursoFocus } from '../../integracoes/focus-nfe/focus-nfe.service'
+import { decifrar } from '../../core/cripto/segredo-fiscal'
 
 /**
  * O que os três serviços do fiscal compartilham: tipos, a tradução da resposta

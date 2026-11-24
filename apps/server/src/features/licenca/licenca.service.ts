@@ -1,10 +1,10 @@
 /**
  * ============================================================================
- * NOME DO ARQUIVO: dispositivo.service.ts
- * MÓDULO: DISPOSITIVOS
+ * NOME DO ARQUIVO: licenca.service.ts
+ * MÓDULO: LICENÇA
  * ============================================================================
  * O QUE ESTE ARQUIVO FAZ:
- * Contém o "coração" e a Lógica de Negócio do módulo de DISPOSITIVOS. Aqui é onde
+ * Contém o "coração" e a Lógica de Negócio do módulo de LICENÇA. Aqui é onde
  * as regras são aplicadas, contas são feitas, e a comunicação direta com o
  * Banco de Dados (Prisma) acontece.
  * 
@@ -15,7 +15,7 @@
  * ============================================================================
  */
 import { Injectable, NotFoundException, BadRequestException, HttpException, HttpStatus, OnModuleInit, Logger } from '@nestjs/common'
-import { generateKeyPairSync }                                                        from 'crypto'
+import { CHAVE_PRIVADA_LICENCA, CHAVE_PUBLICA_LICENCA }                           from '../../core/config/chaves-licenca'
 import { ZodError }                                                                   from 'zod'
 import { randomUUID }                                                                 from 'crypto'
 import jwt                                                                            from 'jsonwebtoken'
@@ -62,8 +62,8 @@ import {
   validarCpf,
   validarCnpj
 } from '@startbig/schemas'
-import { EmailService } from '../../core/email/email.service'
-import { StripeService } from '../../common/stripe/stripe.service'
+import { EmailService } from '../../integracoes/email/email.service'
+import { StripeService } from '../../integracoes/stripe/stripe.service'
 import { dominioDeEmailExiste } from '../../core/validators/email-dominio.validator'
 import { z } from 'zod'
 
@@ -127,41 +127,15 @@ const INCLUDE_MODULOS_DO_PLANO = {
   modulos: { select: { cotaMensal: true, modulo: { select: { identificador: true, ativo: true } } } },
 } as const
 
-// ── Carrega ou gera par de chaves RSA ────────────────────────────────────────
-function carregarChaves(): { privateKey: string; publicKey: string } {
-  const envPriv = process.env.LICENCA_PRIVATE_KEY
-  const envPub  = process.env.LICENCA_PUBLIC_KEY
-
-  if (envPriv && envPub) {
-    return {
-      privateKey: Buffer.from(envPriv, 'base64').toString('utf8'),
-      publicKey:  Buffer.from(envPub,  'base64').toString('utf8'),
-    }
-  }
-
-  const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-    modulusLength:      2048,
-    publicKeyEncoding:  { type: 'spki',  format: 'pem' },
-    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-  })
-
-  console.warn('\n[LICENÇA] Chaves RS256 não configuradas — par temporário gerado para desenvolvimento.')
-  console.warn('[LICENÇA] Adicione ao apps/server/.env para persistir entre reinicializações:\n')
-  console.warn(`LICENCA_PRIVATE_KEY="${Buffer.from(privateKey).toString('base64')}"`)
-  console.warn(`LICENCA_PUBLIC_KEY="${Buffer.from(publicKey).toString('base64')}"\n`)
-
-  return { privateKey, publicKey }
-}
-
-const { privateKey: RSA_PRIVATE_KEY, publicKey: RSA_PUBLIC_KEY } = carregarChaves()
+// As chaves RSA do token de licença agora vêm de core/config/chaves-licenca.ts.
 
 type LicencaCompleta = NonNullable<Awaited<ReturnType<typeof findLicencaByChave>>>
 
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Injectable()
-export class DispositivoService {
-  private readonly logger   = new Logger(DispositivoService.name)
+export class LicencaService {
+  private readonly logger   = new Logger(LicencaService.name)
 
   constructor(
     private readonly emailService:  EmailService,
@@ -303,7 +277,7 @@ export class DispositivoService {
          */
         modulos:             params.modulos ?? [],
       },
-      RSA_PRIVATE_KEY,
+      CHAVE_PRIVADA_LICENCA,
       { algorithm: 'RS256', expiresIn },
     )
 
@@ -320,7 +294,7 @@ export class DispositivoService {
   }
 
   getPublicKey(): string {
-    return RSA_PUBLIC_KEY
+    return CHAVE_PUBLICA_LICENCA
   }
 
   /**

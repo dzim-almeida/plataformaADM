@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common'
 import { MODULO_NFSE } from '@startbig/database'
-import { FocusNfeService } from '../../common/focus-nfe/focus-nfe.service'
+import { FocusNfeService } from '../../integracoes/focus-nfe/focus-nfe.service'
 import { AMBIENTE_PRODUCAO, nomeAmbiente, urlAbsolutaFocus, numeroOuNulo, ResultadoNota, getEmpresaConfig } from './fiscal-comum'
 import { FiscalCotaService } from './fiscal-cota.service'
 import { FiscalEmissaoService } from './fiscal-emissao.service'

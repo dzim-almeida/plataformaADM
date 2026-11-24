@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common'
 import { prisma } from '@startbig/database'
-import { FocusNfeService } from '../../common/focus-nfe/focus-nfe.service'
+import { FocusNfeService } from '../../integracoes/focus-nfe/focus-nfe.service'
 import { buscarEmpresaConfig } from './fiscal-comum'
 
 /**

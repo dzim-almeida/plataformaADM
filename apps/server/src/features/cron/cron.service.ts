@@ -36,8 +36,8 @@ import {
   expirarCobrancasVencidas,
   podarEmissaoLog,
 } from '@startbig/database'
-import { EmailService } from '../../core/email/email.service'
-import { StorageService, TTL_UPLOAD_SEGUNDOS } from '../../common/storage/storage.service'
+import { EmailService } from '../../integracoes/email/email.service'
+import { StorageService, TTL_UPLOAD_SEGUNDOS } from '../../integracoes/storage/storage.service'
 
 @Injectable()
 export class CronService {

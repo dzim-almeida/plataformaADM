@@ -1,7 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus, ConflictException, Optional } from '@nestjs/common'
 import { createHash } from 'crypto'
 import { prisma, MODULO_NFCE } from '@startbig/database'
-import { EmailService } from '../../core/email/email.service'
+import { EmailService } from '../../integracoes/email/email.service'
 import { AMBIENTE_PRODUCAO, competenciaAtual } from './fiscal-comum'
 
 /**
