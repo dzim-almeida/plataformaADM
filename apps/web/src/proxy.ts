@@ -9,6 +9,12 @@ import type { NextRequest } from 'next/server'
  * venda, e quem testa logado como admin nunca percebe. Foi o que aconteceu:
  * /renovar e /pagamento ficaram protegidas desde sempre, e o cliente que
  * pagasse cairia na tela de login vindo do Stripe.
+ *
+ * Estas são as páginas da pasta `app/(publico)/`. Ao criar uma página pública
+ * nova, coloque-a lá E acrescente o caminho aqui; uma coisa sem a outra deixa
+ * a página atrás do login.
+ *
+ * `/debug` está aqui por enquanto (ver achado S4 do code review).
  */
 const ROTAS_PUBLICAS = [
   '/login',

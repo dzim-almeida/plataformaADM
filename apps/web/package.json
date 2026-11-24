@@ -9,9 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@startbig/database": "*",
     "@startbig/schemas": "*",
-    "@startbig/ui": "*",
     "clsx": "*",
     "lucide-react": "*",
     "next": "^16.4.3",
